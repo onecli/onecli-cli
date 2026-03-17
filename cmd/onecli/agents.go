@@ -211,16 +211,20 @@ func (c *AgentsSetSecretsCmd) Run(out *output.Writer) error {
 		}
 	}
 	if c.DryRun {
-		return out.WriteDryRun("Would set agent secrets", map[string]any{"id": c.ID, "secret_ids": ids})
+		return out.WriteDryRun("Would set agent secrets and switch to selective mode", map[string]any{"id": c.ID, "secret_ids": ids})
 	}
 	client, err := newClient()
 	if err != nil {
 		return err
 	}
-	if err := client.SetAgentSecrets(newContext(), c.ID, api.SetAgentSecretsInput{SecretIDs: ids}); err != nil {
+	ctx := newContext()
+	if err := client.SetAgentSecrets(ctx, c.ID, api.SetAgentSecretsInput{SecretIDs: ids}); err != nil {
 		return err
 	}
-	return out.Write(map[string]any{"status": "updated", "id": c.ID, "secret_ids": ids})
+	if err := client.SetAgentSecretMode(ctx, c.ID, api.SetSecretModeInput{Mode: "selective"}); err != nil {
+		return err
+	}
+	return out.Write(map[string]any{"status": "updated", "id": c.ID, "secret_ids": ids, "secret_mode": "selective"})
 }
 
 // AgentsSetSecretModeCmd is `onecli agents set-secret-mode`.
