@@ -8,15 +8,15 @@ import (
 
 // Secret represents a secret returned by the API.
 type Secret struct {
-	ID              string          `json:"id"`
-	Name            string          `json:"name"`
-	Type            string          `json:"type"`
-	HostPattern     string          `json:"hostPattern"`
-	PathPattern     *string         `json:"pathPattern"`
+	ID              string           `json:"id"`
+	Name            string           `json:"name"`
+	Type            string           `json:"type"`
+	HostPattern     string           `json:"hostPattern"`
+	PathPattern     *string          `json:"pathPattern"`
 	InjectionConfig *InjectionConfig `json:"injectionConfig"`
-	CreatedAt       string          `json:"createdAt"`
-	TypeLabel       string          `json:"typeLabel,omitempty"`
-	Preview         string          `json:"preview,omitempty"`
+	CreatedAt       string           `json:"createdAt"`
+	TypeLabel       string           `json:"typeLabel,omitempty"`
+	Preview         string           `json:"preview,omitempty"`
 }
 
 // InjectionConfig describes how a secret is injected into requests.
@@ -27,11 +27,11 @@ type InjectionConfig struct {
 
 // CreateSecretInput is the request body for creating a secret.
 type CreateSecretInput struct {
-	Name            string          `json:"name"`
-	Type            string          `json:"type"`
-	Value           string          `json:"value"`
-	HostPattern     string          `json:"hostPattern"`
-	PathPattern     string          `json:"pathPattern,omitempty"`
+	Name            string           `json:"name"`
+	Type            string           `json:"type"`
+	Value           string           `json:"value"`
+	HostPattern     string           `json:"hostPattern"`
+	PathPattern     string           `json:"pathPattern,omitempty"`
 	InjectionConfig *InjectionConfig `json:"injectionConfig,omitempty"`
 }
 

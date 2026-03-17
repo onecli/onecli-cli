@@ -185,6 +185,6 @@ func TestStoreKeychainFallsBackToFile(t *testing.T) {
 
 type failingKeychain struct{}
 
-func (f *failingKeychain) Get(string) (string, error)    { return "", errors.New("keychain unavailable") }
-func (f *failingKeychain) Set(string, string) error       { return errors.New("keychain unavailable") }
-func (f *failingKeychain) Delete(string) error             { return errors.New("keychain unavailable") }
+func (f *failingKeychain) Get(string) (string, error) { return "", errors.New("keychain unavailable") }
+func (f *failingKeychain) Set(string, string) error   { return errors.New("keychain unavailable") }
+func (f *failingKeychain) Delete(string) error        { return errors.New("keychain unavailable") }

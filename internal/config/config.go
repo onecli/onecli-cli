@@ -9,8 +9,8 @@ import (
 )
 
 const (
-	envVar    = "ONECLI_ENV"
-	apiKeyVar = "ONECLI_API_KEY"
+	envVar     = "ONECLI_ENV"
+	apiKeyVar  = "ONECLI_API_KEY"
 	apiHostVar = "ONECLI_API_HOST"
 
 	envProduction = "production"
