@@ -1,0 +1,28 @@
+# binaries
+/dist/
+/onecli
+/bin/
+
+# go-task cache
+.task/
+
+# test artifacts
+coverage.out
+coverage.html
+
+# OS
+.DS_Store
+Thumbs.db
+
+# editor
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# env
+.env
+.env.local
+
+# internal planning
+plan.md
