@@ -4,7 +4,11 @@ CLI for [OneCLI](https://onecli.sh) — manage agents, secrets, and configuratio
 
 ## Install
 
-Download from [GitHub Releases](https://github.com/onecli/onecli-cli/releases), or build from source:
+```bash
+curl -fsSL onecli.sh/cli/install | sh
+```
+
+Or download from [GitHub Releases](https://github.com/onecli/onecli-cli/releases), or build from source:
 
 ```bash
 go install github.com/onecli/onecli-cli/cmd/onecli@latest
@@ -13,15 +17,10 @@ go install github.com/onecli/onecli-cli/cmd/onecli@latest
 ## Quick Start
 
 ```bash
+onecli auth login --api-key oc_...
 onecli agents list
 onecli secrets list
 onecli agents create --name "My Agent" --identifier my-agent
-```
-
-If the server requires authentication:
-
-```bash
-onecli auth login --api-key oc_...
 ```
 
 ## Commands
