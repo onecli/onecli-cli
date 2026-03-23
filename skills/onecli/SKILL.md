@@ -40,11 +40,35 @@ onecli agents list --quiet id
 onecli agents set-secrets --id <agent-id> --secret-ids <secret-id>
 ```
 
+### Block an endpoint
+
+```bash
+onecli rules create --name "Block Gmail send" \
+  --host-pattern "gmail.googleapis.com" \
+  --path-pattern "/gmail/v1/users/me/messages/send" \
+  --action block --method POST
+```
+
+### Rate limit an endpoint
+
+```bash
+onecli rules create --name "Limit Anthropic calls" \
+  --host-pattern "api.anthropic.com" \
+  --action rate_limit --rate-limit 100 --rate-limit-window hour
+```
+
 ### Check agent configuration
 
 ```bash
 onecli agents list --fields id,name,secretMode
 onecli agents secrets --id <agent-id>
+```
+
+### View and regenerate API key
+
+```bash
+onecli auth api-key
+onecli auth regenerate-api-key
 ```
 
 ## Output Format
