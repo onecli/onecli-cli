@@ -1,6 +1,6 @@
 # OneCLI CLI
 
-CLI for [OneCLI](https://onecli.sh) — manage agents, secrets, and configuration from the terminal.
+CLI for [OneCLI](https://onecli.sh) — manage agents, secrets, rules, and configuration from the terminal.
 
 ## Install
 
@@ -46,6 +46,16 @@ onecli secrets list                                    List all secrets
 onecli secrets create --name X --type anthropic ...    Create a new secret
 onecli secrets update --id X --value Y                 Update a secret
 onecli secrets delete --id X                           Delete a secret
+```
+
+### Rules
+
+```
+onecli rules list                                      List all policy rules
+onecli rules get --id X                                Get a single rule
+onecli rules create --name X --host-pattern Y ...      Create a new rule
+onecli rules update --id X [--action block] ...        Update a rule
+onecli rules delete --id X                             Delete a rule
 ```
 
 ### Auth

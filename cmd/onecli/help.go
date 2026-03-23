@@ -37,7 +37,7 @@ func (cmd *HelpCmd) Run(out *output.Writer) error {
 	return out.Write(HelpResponse{
 		Name:        "onecli",
 		Version:     version,
-		Description: "CLI for managing OneCLI agents, secrets, and configuration.",
+		Description: "CLI for managing OneCLI agents, secrets, rules, and configuration.",
 		Commands: []CommandInfo{
 			{Name: "agents list", Description: "List all agents."},
 			{Name: "agents get-default", Description: "Get the default agent."},
@@ -79,9 +79,23 @@ func (cmd *HelpCmd) Run(out *output.Writer) error {
 			{Name: "secrets delete", Description: "Delete a secret.", Args: []ArgInfo{
 				{Name: "--id", Required: true, Description: "ID of the secret to delete."},
 			}},
+			{Name: "rules list", Description: "List all policy rules."},
+			{Name: "rules create", Description: "Create a new policy rule.", Args: []ArgInfo{
+				{Name: "--name", Required: true, Description: "Display name for the rule."},
+				{Name: "--host-pattern", Required: true, Description: "Host pattern to match."},
+				{Name: "--action", Required: true, Description: "Action: 'block' or 'rate_limit'."},
+			}},
+			{Name: "rules update", Description: "Update an existing policy rule.", Args: []ArgInfo{
+				{Name: "--id", Required: true, Description: "ID of the rule to update."},
+			}},
+			{Name: "rules delete", Description: "Delete a policy rule.", Args: []ArgInfo{
+				{Name: "--id", Required: true, Description: "ID of the rule to delete."},
+			}},
 			{Name: "auth login", Description: "Store API key for authentication."},
 			{Name: "auth logout", Description: "Remove stored API key."},
 			{Name: "auth status", Description: "Show authentication status."},
+			{Name: "auth api-key", Description: "Show your current API key."},
+			{Name: "auth regenerate-api-key", Description: "Regenerate your API key."},
 			{Name: "config get <key>", Description: "Get a config value."},
 			{Name: "config set <key> <value>", Description: "Set a config value."},
 			{Name: "version", Description: "Print version information."},

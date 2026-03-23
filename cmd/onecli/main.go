@@ -22,6 +22,7 @@ type CLI struct {
 	Help    HelpCmd    `cmd:"" help:"Show available commands."`
 	Agents  AgentsCmd  `cmd:"" help:"Manage agents."`
 	Secrets SecretsCmd `cmd:"" help:"Manage secrets."`
+	Rules   RulesCmd   `cmd:"" help:"Manage policy rules."`
 	Auth    AuthCmd    `cmd:"" help:"Manage authentication."`
 	Config  ConfigCmd  `cmd:"" help:"Manage configuration settings."`
 }
@@ -43,7 +44,7 @@ func main() {
 	cli := &CLI{}
 	k, err := kong.New(cli,
 		kong.Name("onecli"),
-		kong.Description("CLI for managing OneCLI agents, secrets, and configuration."),
+		kong.Description("CLI for managing OneCLI agents, secrets, rules, and configuration."),
 		kong.Help(jsonHelpPrinter(out)),
 		kong.Bind(out),
 	)
