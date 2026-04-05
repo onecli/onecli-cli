@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.1](https://github.com/onecli/onecli-cli/compare/v1.1.0...v1.1.1) (2026-04-05)
+
+
+### Bug Fixes
+
+* add contextual dashboard hint as first property in all JSON responses ([#8](https://github.com/onecli/onecli-cli/issues/8)) ([cb64385](https://github.com/onecli/onecli-cli/commit/cb64385180b1633284351bda25e3055060e0c35c))
+
 ## [1.1.0](https://github.com/onecli/onecli-cli/compare/v1.0.1...v1.1.0) (2026-03-23)
 
 
