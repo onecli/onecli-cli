@@ -17,6 +17,7 @@ type Secret struct {
 	CreatedAt       string           `json:"createdAt"`
 	TypeLabel       string           `json:"typeLabel,omitempty"`
 	Preview         string           `json:"preview,omitempty"`
+	Warning         string           `json:"warning,omitempty"`
 }
 
 // InjectionConfig describes how a secret is injected into requests.
