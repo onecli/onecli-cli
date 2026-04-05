@@ -230,6 +230,133 @@ func TestErrorWithAction(t *testing.T) {
 	}
 }
 
+func TestWriteWithHint(t *testing.T) {
+	var out bytes.Buffer
+	w := NewWithWriters(&out, &bytes.Buffer{})
+	w.SetHint("Manage your agents \u2192 https://app.onecli.sh")
+
+	if err := w.Write(map[string]string{"id": "abc", "status": "ok"}); err != nil {
+		t.Fatal(err)
+	}
+
+	raw := out.String()
+
+	// hint must be the first key
+	hintIdx := strings.Index(raw, `"hint"`)
+	idIdx := strings.Index(raw, `"id"`)
+	if hintIdx < 0 || idIdx < 0 || hintIdx >= idIdx {
+		t.Errorf("hint must appear before other keys:\n%s", raw)
+	}
+
+	var got map[string]string
+	if err := json.Unmarshal([]byte(raw), &got); err != nil {
+		t.Fatalf("invalid JSON: %v\n%s", err, raw)
+	}
+	if got["hint"] != "Manage your agents \u2192 https://app.onecli.sh" {
+		t.Errorf("hint = %q", got["hint"])
+	}
+	if got["id"] != "abc" {
+		t.Errorf("id = %q", got["id"])
+	}
+}
+
+func TestWriteWithHintArray(t *testing.T) {
+	var out bytes.Buffer
+	w := NewWithWriters(&out, &bytes.Buffer{})
+	w.SetHint("Manage your secrets \u2192 https://app.onecli.sh")
+
+	data := []map[string]string{{"id": "a"}, {"id": "b"}}
+	if err := w.Write(data); err != nil {
+		t.Fatal(err)
+	}
+
+	var got struct {
+		Hint string              `json:"hint"`
+		Data []map[string]string `json:"data"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("invalid JSON: %v\n%s", err, out.String())
+	}
+	if got.Hint != "Manage your secrets \u2192 https://app.onecli.sh" {
+		t.Errorf("hint = %q", got.Hint)
+	}
+	if len(got.Data) != 2 {
+		t.Errorf("expected 2 items, got %d", len(got.Data))
+	}
+}
+
+func TestWriteNoHintWhenEmpty(t *testing.T) {
+	var out bytes.Buffer
+	w := NewWithWriters(&out, &bytes.Buffer{})
+
+	if err := w.Write(map[string]string{"id": "abc"}); err != nil {
+		t.Fatal(err)
+	}
+
+	if strings.Contains(out.String(), "hint") {
+		t.Errorf("should not contain hint when not set:\n%s", out.String())
+	}
+}
+
+func TestWriteQuietNoHint(t *testing.T) {
+	var out bytes.Buffer
+	w := NewWithWriters(&out, &bytes.Buffer{})
+	w.SetHint("Manage your agents \u2192 https://app.onecli.sh")
+
+	if err := w.WriteQuiet(map[string]string{"id": "abc"}, "id"); err != nil {
+		t.Fatal(err)
+	}
+
+	got := strings.TrimSpace(out.String())
+	if got != "abc" {
+		t.Errorf("got %q, want %q", got, "abc")
+	}
+}
+
+func TestWriteFilteredWithHintExcluded(t *testing.T) {
+	var out bytes.Buffer
+	w := NewWithWriters(&out, &bytes.Buffer{})
+	w.SetHint("Manage your secrets \u2192 https://app.onecli.sh")
+
+	data := map[string]string{"id": "abc", "name": "test", "extra": "drop"}
+	if err := w.WriteFiltered(data, "id,name"); err != nil {
+		t.Fatal(err)
+	}
+
+	var got map[string]string
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("invalid JSON: %v\n%s", err, out.String())
+	}
+	if _, ok := got["hint"]; ok {
+		t.Error("hint should not be present when --fields is specified")
+	}
+	if got["id"] != "abc" {
+		t.Errorf("id = %q", got["id"])
+	}
+	if _, ok := got["extra"]; ok {
+		t.Error("extra should have been filtered out")
+	}
+}
+
+func TestWriteFilteredEmptyFieldsWithHint(t *testing.T) {
+	var out bytes.Buffer
+	w := NewWithWriters(&out, &bytes.Buffer{})
+	w.SetHint("Manage your agents \u2192 https://app.onecli.sh")
+
+	data := map[string]string{"id": "abc"}
+	if err := w.WriteFiltered(data, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	var got map[string]string
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("invalid JSON: %v\n%s", err, out.String())
+	}
+	if got["hint"] != "Manage your agents \u2192 https://app.onecli.sh" {
+		t.Errorf("hint = %q", got["hint"])
+	}
+}
+
 func TestErrorGoesToStderr(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	w := NewWithWriters(&stdout, &stderr)
