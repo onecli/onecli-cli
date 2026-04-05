@@ -12,8 +12,9 @@ import (
 // Writer handles all structured output for the CLI.
 // All stdout/stderr writing must go through this. Never use fmt.Print or os.Stdout directly.
 type Writer struct {
-	out io.Writer
-	err io.Writer
+	out  io.Writer
+	err  io.Writer
+	hint string
 }
 
 // New creates a Writer that writes to stdout and stderr.
@@ -32,6 +33,12 @@ func NewWithWriters(out, err io.Writer) *Writer {
 	}
 }
 
+// SetHint sets a contextual hint message that will be injected as the first
+// property in every JSON response written to stdout.
+func (w *Writer) SetHint(msg string) {
+	w.hint = msg
+}
+
 // Write marshals v as indented JSON and writes it to stdout.
 // HTML escaping is disabled because this is a CLI tool, not a web page.
 func (w *Writer) Write(v any) error {
@@ -39,11 +46,7 @@ func (w *Writer) Write(v any) error {
 	if err != nil {
 		return fmt.Errorf("marshaling output: %w", err)
 	}
-	_, writeErr := w.out.Write(data)
-	if writeErr != nil {
-		return fmt.Errorf("writing output: %w", writeErr)
-	}
-	return nil
+	return w.writeToOut(data)
 }
 
 // WriteFiltered marshals v as JSON, then filters to only include the specified
@@ -65,6 +68,15 @@ func (w *Writer) WriteFiltered(v any, fields string) error {
 		return fmt.Errorf("filtering fields: %w", err)
 	}
 
+	// Re-indent: filterObject may return compact JSON.
+	var parsed any
+	if json.Unmarshal(filtered, &parsed) == nil {
+		if indented, mErr := marshalIndent(parsed); mErr == nil {
+			filtered = indented
+		}
+	}
+
+	// Write directly without hint — agent explicitly requested specific fields.
 	_, writeErr := w.out.Write(filtered)
 	if writeErr != nil {
 		return fmt.Errorf("writing output: %w", writeErr)
@@ -271,6 +283,79 @@ func (w *Writer) writeError(resp ErrorResponse) error {
 		return fmt.Errorf("writing error output: %w", writeErr)
 	}
 	return nil
+}
+
+// writeToOut injects the hint (if set) and writes the final bytes to stdout.
+func (w *Writer) writeToOut(data []byte) error {
+	data = w.injectHint(data)
+	_, err := w.out.Write(data)
+	if err != nil {
+		return fmt.Errorf("writing output: %w", err)
+	}
+	return nil
+}
+
+// injectHint prepends a "hint" property to JSON objects or wraps arrays
+// in a {"hint": ..., "data": [...]} envelope.
+func (w *Writer) injectHint(data []byte) []byte {
+	if w.hint == "" {
+		return data
+	}
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) < 2 {
+		return data
+	}
+
+	hintVal, err := json.Marshal(w.hint)
+	if err != nil {
+		return data
+	}
+
+	switch trimmed[0] {
+	case '{':
+		return injectHintObject(data, hintVal)
+	case '[':
+		return injectHintArray(data, w.hint)
+	default:
+		return data
+	}
+}
+
+// injectHintObject splices "hint" as the first key in a JSON object.
+func injectHintObject(data []byte, hintVal []byte) []byte {
+	idx := bytes.IndexByte(data, '{')
+	rest := data[idx+1:]
+	restTrimmed := bytes.TrimSpace(rest)
+
+	var buf bytes.Buffer
+	buf.Write(data[:idx+1])
+	buf.WriteString("\n  \"hint\": ")
+	buf.Write(hintVal)
+
+	if len(restTrimmed) == 0 || restTrimmed[0] == '}' {
+		buf.WriteString("\n}\n")
+	} else {
+		buf.WriteByte(',')
+		buf.Write(rest)
+	}
+
+	return buf.Bytes()
+}
+
+// injectHintArray wraps a JSON array in {"hint": ..., "data": [...]}.
+func injectHintArray(data []byte, hint string) []byte {
+	wrapper := struct {
+		Hint string          `json:"hint"`
+		Data json.RawMessage `json:"data"`
+	}{
+		Hint: hint,
+		Data: json.RawMessage(bytes.TrimSpace(data)),
+	}
+	result, err := marshalIndent(wrapper)
+	if err != nil {
+		return data
+	}
+	return result
 }
 
 // marshalIndent encodes v as indented JSON with HTML escaping disabled.

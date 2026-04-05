@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"strings"
 
 	"github.com/alecthomas/kong"
 	"github.com/onecli/onecli-cli/internal/api"
@@ -59,6 +60,7 @@ func main() {
 		os.Exit(exitcode.Error)
 	}
 
+	out.SetHint(hintForCommand(kCtx.Command(), config.APIHost()))
 	err = kCtx.Run(out)
 	if err != nil {
 		handleError(out, err)
@@ -102,4 +104,23 @@ func newClient() (*api.Client, error) {
 // newContext returns a background context for API calls.
 func newContext() context.Context {
 	return context.Background()
+}
+
+// hintForCommand returns a contextual hint message based on the active command group.
+func hintForCommand(cmd, host string) string {
+	group := strings.SplitN(cmd, " ", 2)[0]
+	switch group {
+	case "secrets":
+		return "Manage your secrets \u2192 " + host
+	case "agents":
+		return "Manage your agents \u2192 " + host
+	case "rules":
+		return "Manage your policy rules \u2192 " + host
+	case "auth":
+		return "Manage authentication \u2192 " + host
+	case "config":
+		return "Manage configuration \u2192 " + host
+	default:
+		return ""
+	}
 }
