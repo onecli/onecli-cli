@@ -80,6 +80,9 @@ func (cmd *HelpCmd) Run(out *output.Writer) error {
 				{Name: "--id", Required: true, Description: "ID of the secret to delete."},
 			}},
 			{Name: "apps list", Description: "List all apps with config and connection status."},
+			{Name: "apps get", Description: "Get a single app with setup guidance.", Args: []ArgInfo{
+				{Name: "--provider", Required: true, Description: "Provider name (e.g. 'github', 'gmail')."},
+			}},
 			{Name: "apps configure", Description: "Save OAuth credentials (BYOC) for a provider.", Args: []ArgInfo{
 				{Name: "--provider", Required: true, Description: "Provider name (e.g. 'github', 'gmail')."},
 				{Name: "--client-id", Required: true, Description: "OAuth client ID."},
