@@ -6,7 +6,7 @@ import (
 	"net/http"
 )
 
-// App represents an app from the unified /api/apps listing.
+// App represents an app from the /api/apps endpoints.
 type App struct {
 	ID             string         `json:"id"`
 	Name           string         `json:"name"`
@@ -15,6 +15,7 @@ type App struct {
 	Configurable   bool           `json:"configurable"`
 	Config         *AppConfig     `json:"config"`
 	Connection     *AppConnection `json:"connection"`
+	Hint           string         `json:"hint,omitempty"`
 }
 
 // AppConfig is the BYOC credential configuration status.
@@ -43,6 +44,15 @@ func (c *Client) ListApps(ctx context.Context) ([]App, error) {
 		return nil, fmt.Errorf("listing apps: %w", err)
 	}
 	return apps, nil
+}
+
+// GetApp returns a single app by provider name.
+func (c *Client) GetApp(ctx context.Context, provider string) (*App, error) {
+	var app App
+	if err := c.do(ctx, http.MethodGet, "/api/apps/"+provider, nil, &app); err != nil {
+		return nil, fmt.Errorf("getting app: %w", err)
+	}
+	return &app, nil
 }
 
 // ConfigureApp saves BYOC credentials for a provider.

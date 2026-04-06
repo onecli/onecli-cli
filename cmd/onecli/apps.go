@@ -9,9 +9,16 @@ import (
 	"github.com/onecli/onecli-cli/pkg/validate"
 )
 
+// configureResult is the structured response after configuring an app.
+type configureResult struct {
+	App    string `json:"app"`
+	Status string `json:"status"`
+}
+
 // AppsCmd is the `onecli apps` command group.
 type AppsCmd struct {
 	List       AppsListCmd       `cmd:"" help:"List all apps with config and connection status."`
+	Get        AppsGetCmd        `cmd:"" help:"Get a single app with setup guidance."`
 	Configure  AppsConfigureCmd  `cmd:"" help:"Save OAuth credentials (BYOC) for a provider."`
 	Remove     AppsRemoveCmd     `cmd:"" help:"Remove OAuth credentials for a provider."`
 	Disconnect AppsDisconnectCmd `cmd:"" help:"Disconnect an app connection."`
@@ -40,6 +47,34 @@ func (c *AppsListCmd) Run(out *output.Writer) error {
 		return out.WriteQuiet(apps, c.Quiet)
 	}
 	return out.WriteFiltered(apps, c.Fields)
+}
+
+// AppsGetCmd is `onecli apps get`.
+type AppsGetCmd struct {
+	Provider string `required:"" help:"Provider name (e.g. 'github', 'gmail')."`
+	Fields   string `optional:"" help:"Comma-separated list of fields to include in output."`
+}
+
+func (c *AppsGetCmd) Run(out *output.Writer) error {
+	if err := validate.ResourceID(c.Provider); err != nil {
+		return fmt.Errorf("invalid provider: %w", err)
+	}
+
+	client, err := newClient()
+	if err != nil {
+		return err
+	}
+	app, err := client.GetApp(newContext(), c.Provider)
+	if err != nil {
+		return err
+	}
+
+	if app.Hint != "" {
+		out.SetHint(app.Hint)
+		app.Hint = ""
+	}
+
+	return out.WriteFiltered(app, c.Fields)
 }
 
 // AppsConfigureCmd is `onecli apps configure`.
@@ -85,9 +120,18 @@ func (c *AppsConfigureCmd) Run(out *output.Writer) error {
 		return err
 	}
 
-	return out.Write(map[string]string{
-		"status":   "configured",
-		"provider": c.Provider,
+	app, err := client.GetApp(newContext(), c.Provider)
+	if err != nil {
+		return err
+	}
+
+	if app.Hint != "" {
+		out.SetHint(app.Hint)
+	}
+
+	return out.Write(configureResult{
+		App:    c.Provider,
+		Status: "configured",
 	})
 }
 
