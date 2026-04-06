@@ -23,6 +23,7 @@ type CLI struct {
 	Help    HelpCmd    `cmd:"" help:"Show available commands."`
 	Agents  AgentsCmd  `cmd:"" help:"Manage agents."`
 	Secrets SecretsCmd `cmd:"" help:"Manage secrets."`
+	Apps    AppsCmd    `cmd:"" help:"Manage app connections."`
 	Rules   RulesCmd   `cmd:"" help:"Manage policy rules."`
 	Auth    AuthCmd    `cmd:"" help:"Manage authentication."`
 	Config  ConfigCmd  `cmd:"" help:"Manage configuration settings."`
@@ -117,6 +118,8 @@ func hintForCommand(cmd, host string) string {
 		return "Manage your secrets \u2192 " + host
 	case "agents":
 		return "Manage your agents \u2192 " + host
+	case "apps":
+		return "Manage your app connections \u2192 " + host
 	case "rules":
 		return "Manage your policy rules \u2192 " + host
 	case "auth":
