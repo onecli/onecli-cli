@@ -175,4 +175,3 @@ func (c *SecretsDeleteCmd) Run(out *output.Writer) error {
 	}
 	return out.Write(map[string]string{"status": "deleted", "id": c.ID})
 }
-
