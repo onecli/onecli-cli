@@ -79,14 +79,17 @@ func (cmd *HelpCmd) Run(out *output.Writer) error {
 			{Name: "secrets delete", Description: "Delete a secret.", Args: []ArgInfo{
 				{Name: "--id", Required: true, Description: "ID of the secret to delete."},
 			}},
-			{Name: "apps list", Description: "List all app connections."},
-			{Name: "apps connect", Description: "Connect an OAuth app.", Args: []ArgInfo{
-				{Name: "--provider", Required: true, Description: "Provider name (e.g. 'google')."},
+			{Name: "apps list", Description: "List all apps with config and connection status."},
+			{Name: "apps configure", Description: "Save OAuth credentials (BYOC) for a provider.", Args: []ArgInfo{
+				{Name: "--provider", Required: true, Description: "Provider name (e.g. 'github', 'gmail')."},
 				{Name: "--client-id", Required: true, Description: "OAuth client ID."},
 				{Name: "--client-secret", Required: true, Description: "OAuth client secret."},
 			}},
-			{Name: "apps disconnect", Description: "Disconnect an app.", Args: []ArgInfo{
-				{Name: "--id", Required: true, Description: "ID of the app connection to disconnect."},
+			{Name: "apps remove", Description: "Remove OAuth credentials for a provider.", Args: []ArgInfo{
+				{Name: "--provider", Required: true, Description: "Provider name (e.g. 'github', 'gmail')."},
+			}},
+			{Name: "apps disconnect", Description: "Disconnect an app connection.", Args: []ArgInfo{
+				{Name: "--provider", Required: true, Description: "Provider name (e.g. 'github', 'gmail')."},
 			}},
 			{Name: "rules list", Description: "List all policy rules."},
 			{Name: "rules create", Description: "Create a new policy rule.", Args: []ArgInfo{
