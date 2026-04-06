@@ -12,9 +12,10 @@ import (
 // Writer handles all structured output for the CLI.
 // All stdout/stderr writing must go through this. Never use fmt.Print or os.Stdout directly.
 type Writer struct {
-	out  io.Writer
-	err  io.Writer
-	hint string
+	out    io.Writer
+	err    io.Writer
+	hint   string
+	hintFn func() string
 }
 
 // New creates a Writer that writes to stdout and stderr.
@@ -37,6 +38,21 @@ func NewWithWriters(out, err io.Writer) *Writer {
 // property in every JSON response written to stdout.
 func (w *Writer) SetHint(msg string) {
 	w.hint = msg
+}
+
+// SetHintFunc sets a function that lazily resolves the hint message at write
+// time. This ensures the hint reflects state after the command has executed
+// (e.g. after `config set api-host` updates the host).
+func (w *Writer) SetHintFunc(fn func() string) {
+	w.hintFn = fn
+}
+
+// resolveHint returns the current hint, preferring hintFn if set.
+func (w *Writer) resolveHint() string {
+	if w.hintFn != nil {
+		return w.hintFn()
+	}
+	return w.hint
 }
 
 // Write marshals v as indented JSON and writes it to stdout.
@@ -298,7 +314,8 @@ func (w *Writer) writeToOut(data []byte) error {
 // injectHint prepends a "hint" property to JSON objects or wraps arrays
 // in a {"hint": ..., "data": [...]} envelope.
 func (w *Writer) injectHint(data []byte) []byte {
-	if w.hint == "" {
+	hint := w.resolveHint()
+	if hint == "" {
 		return data
 	}
 	trimmed := bytes.TrimSpace(data)
@@ -306,7 +323,7 @@ func (w *Writer) injectHint(data []byte) []byte {
 		return data
 	}
 
-	hintVal, err := json.Marshal(w.hint)
+	hintVal, err := json.Marshal(hint)
 	if err != nil {
 		return data
 	}
@@ -315,7 +332,7 @@ func (w *Writer) injectHint(data []byte) []byte {
 	case '{':
 		return injectHintObject(data, hintVal)
 	case '[':
-		return injectHintArray(data, w.hint)
+		return injectHintArray(data, hint)
 	default:
 		return data
 	}
