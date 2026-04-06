@@ -60,7 +60,10 @@ func main() {
 		os.Exit(exitcode.Error)
 	}
 
-	out.SetHint(hintForCommand(kCtx.Command(), config.APIHost()))
+	cmd := kCtx.Command()
+	out.SetHintFunc(func() string {
+		return hintForCommand(cmd, config.APIHost())
+	})
 	err = kCtx.Run(out)
 	if err != nil {
 		handleError(out, err)
