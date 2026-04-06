@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.2.0](https://github.com/onecli/onecli-cli/compare/v1.1.1...v1.2.0) (2026-04-06)
+
+
+### Features
+
+* add apps connect/list/disconnect commands for OAuth app connections ([#12](https://github.com/onecli/onecli-cli/issues/12)) ([49cccb2](https://github.com/onecli/onecli-cli/commit/49cccb26e64c89ede99b65bb54e5bf6bab1fb25f))
+
+
+### Bug Fixes
+
+* add contextual dashboard hint as first property in all JSON responses ([#13](https://github.com/onecli/onecli-cli/issues/13)) ([b127ac2](https://github.com/onecli/onecli-cli/commit/b127ac2bcc41373ed7b13cad84c4fac7588c08f6))
+* add warning field to secrets API response ([#11](https://github.com/onecli/onecli-cli/issues/11)) ([eabe16a](https://github.com/onecli/onecli-cli/commit/eabe16a621346b6fddd5f751bcad85098d9a279f))
+* unify REST API under /api/apps/:provider ([#15](https://github.com/onecli/onecli-cli/issues/15)) ([d7b61c7](https://github.com/onecli/onecli-cli/commit/d7b61c705f0ff69daf50a1b545af1dca4f4c1fdd))
+
 ## [1.1.1](https://github.com/onecli/onecli-cli/compare/v1.1.0...v1.1.1) (2026-04-05)
 
 
