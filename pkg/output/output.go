@@ -38,6 +38,7 @@ func NewWithWriters(out, err io.Writer) *Writer {
 // property in every JSON response written to stdout.
 func (w *Writer) SetHint(msg string) {
 	w.hint = msg
+	w.hintFn = nil
 }
 
 // SetHintFunc sets a function that lazily resolves the hint message at write
