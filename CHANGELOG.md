@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.1](https://github.com/onecli/onecli-cli/compare/v1.2.0...v1.2.1) (2026-04-06)
+
+
+### Bug Fixes
+
+* add apps get command with server-side hint passthrough ([#19](https://github.com/onecli/onecli-cli/issues/19)) ([9cef29e](https://github.com/onecli/onecli-cli/commit/9cef29ec4c273adee3f8a29b3ce739cfd2755b5f))
+
 ## [1.2.0](https://github.com/onecli/onecli-cli/compare/v1.1.1...v1.2.0) (2026-04-06)
 
 
