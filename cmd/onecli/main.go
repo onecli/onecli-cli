@@ -27,6 +27,7 @@ type CLI struct {
 	Rules   RulesCmd   `cmd:"" help:"Manage policy rules."`
 	Auth    AuthCmd    `cmd:"" help:"Manage authentication."`
 	Config  ConfigCmd  `cmd:"" help:"Manage configuration settings."`
+	Migrate MigrateCmd `cmd:"" help:"Migrate data to OneCLI Cloud."`
 }
 
 func main() {
@@ -126,6 +127,8 @@ func hintForCommand(cmd, host string) string {
 		return "Manage authentication \u2192 " + host
 	case "config":
 		return "Manage configuration \u2192 " + host
+	case "migrate":
+		return "Migrate data to OneCLI Cloud"
 	default:
 		return ""
 	}

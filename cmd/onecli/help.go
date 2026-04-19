@@ -113,6 +113,9 @@ func (cmd *HelpCmd) Run(out *output.Writer) error {
 			{Name: "auth regenerate-api-key", Description: "Regenerate your API key."},
 			{Name: "config get <key>", Description: "Get a config value."},
 			{Name: "config set <key> <value>", Description: "Set a config value."},
+			{Name: "migrate", Description: "Migrate data to OneCLI Cloud.", Args: []ArgInfo{
+				{Name: "--cloud-key", Required: true, Description: "OneCLI Cloud API key."},
+			}},
 			{Name: "version", Description: "Print version information."},
 		},
 		Hint: "run 'onecli <command> --help' to see available subcommands and flags",
