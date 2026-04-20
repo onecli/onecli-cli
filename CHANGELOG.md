@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/onecli/onecli-cli/compare/v1.2.1...v1.3.0) (2026-04-20)
+
+
+### Features
+
+* add data migration from self-hosted to cloud ([#21](https://github.com/onecli/onecli-cli/issues/21)) ([c34d2e7](https://github.com/onecli/onecli-cli/commit/c34d2e77b1ccf3cb03ee31d2fa066f9822ffc2eb))
+
 ## [1.2.1](https://github.com/onecli/onecli-cli/compare/v1.2.0...v1.2.1) (2026-04-06)
 
 
