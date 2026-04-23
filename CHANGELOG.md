@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0](https://github.com/onecli/onecli-cli/compare/v1.3.1...v1.4.0) (2026-04-23)
+
+
+### Features
+
+* add "onecli run" command to wrap agent processes with gateway access ([#23](https://github.com/onecli/onecli-cli/issues/23)) ([87172a1](https://github.com/onecli/onecli-cli/commit/87172a10e2d8e9724fb2cab26b59ceedbccb806c))
+
 ## [1.3.1](https://github.com/onecli/onecli-cli/compare/v1.3.0...v1.3.1) (2026-04-23)
 
 
