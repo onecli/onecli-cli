@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.1](https://github.com/onecli/onecli-cli/compare/v1.3.0...v1.3.1) (2026-04-23)
+
+
+### Bug Fixes
+
+* use server-side proxy for version lookup to avoid github api rate limits ([#24](https://github.com/onecli/onecli-cli/issues/24)) ([74a9211](https://github.com/onecli/onecli-cli/commit/74a9211d11e1e6e83120a48eead819a16b458860))
+
 ## [1.3.0](https://github.com/onecli/onecli-cli/compare/v1.2.1...v1.3.0) (2026-04-20)
 
 
