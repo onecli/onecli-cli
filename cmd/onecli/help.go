@@ -39,6 +39,13 @@ func (cmd *HelpCmd) Run(out *output.Writer) error {
 		Version:     version,
 		Description: "CLI for managing OneCLI agents, secrets, rules, and configuration.",
 		Commands: []CommandInfo{
+			{Name: "run", Description: "Run a command with OneCLI gateway access.", Args: []ArgInfo{
+				{Name: "<command>", Required: true, Description: "Command to execute (e.g. claude, cursor, codex)."},
+				{Name: "--agent", Description: "OneCLI agent identifier (uses default if omitted)."},
+				{Name: "--gateway", Description: "Gateway host:port override (default: derived from API host)."},
+				{Name: "--no-ca", Description: "Skip CA cert write and CA trust env injection."},
+				{Name: "--dry-run", Description: "Print resolved env and command without executing."},
+			}},
 			{Name: "agents list", Description: "List all agents."},
 			{Name: "agents get-default", Description: "Get the default agent."},
 			{Name: "agents create", Description: "Create a new agent.", Args: []ArgInfo{
