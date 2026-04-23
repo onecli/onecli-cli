@@ -11,6 +11,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/onecli/onecli-cli/internal/api"
 	"github.com/onecli/onecli-cli/internal/config"
 	"github.com/onecli/onecli-cli/pkg/output"
 	"github.com/onecli/onecli-cli/pkg/validate"
@@ -97,8 +98,14 @@ func (c *RunCmd) Run(out *output.Writer) error {
 	env := buildChildEnv(os.Environ(), cfg.Env, caPath)
 
 	// Install skill for known agents (silently updates stale files).
+	// Fetch configured secrets to generate the dynamic services section.
+	// Inject the agent name so the skill can reference it deterministically.
 	if name, dir, ok := agentSkillDir(c.Args[0]); ok {
-		maybeInstallGatewaySkill(out, name, dir)
+		secrets, _ := client.ListSecrets(newContext())
+		skillContent := buildSkillContent(secrets)
+		maybeInstallGatewaySkill(out, name, dir, skillContent)
+		env = append(env, "ONECLI_AGENT_NAME="+name)
+		env = append(env, "ONECLI_DASHBOARD_URL="+config.APIHost())
 	}
 
 	// Exec — replaces this process so the agent gets direct terminal control.
@@ -280,9 +287,39 @@ func agentSkillDir(cmd string) (agentName, baseDir string, ok bool) {
 	return "", "", false
 }
 
+// buildSkillContent generates the full skill file by replacing the
+// {{SERVICES_SECTION}} placeholder in the embedded template with a
+// dynamic section listing configured secrets.
+func buildSkillContent(secrets []api.Secret) string {
+	var sb strings.Builder
+	sb.WriteString("## Your Gateway Services\n\n")
+
+	// List API key secrets.
+	var secretLines []string
+	for _, s := range secrets {
+		if s.HostPattern != "" {
+			secretLines = append(secretLines, fmt.Sprintf("- %s (%s)", s.HostPattern, s.Name))
+		}
+	}
+	if len(secretLines) > 0 {
+		sb.WriteString("API key secrets configured for:\n")
+		for _, line := range secretLines {
+			sb.WriteString(line + "\n")
+		}
+		sb.WriteString("\n")
+	}
+
+	sb.WriteString("OAuth apps (Gmail, GitHub, Google Calendar, Google Drive, etc.) are\n")
+	sb.WriteString("also available through the gateway. Just make the request directly;\n")
+	sb.WriteString("the gateway injects credentials if the app is connected. If not, it\n")
+	sb.WriteString("returns an error with a connect URL you can present to the user.\n")
+
+	return strings.Replace(gatewaySkill, "{{SERVICES_SECTION}}", sb.String(), 1)
+}
+
 // maybeInstallGatewaySkill installs the OneCLI gateway skill file if it is
 // missing or stale. agentName is used in user-facing messages.
-func maybeInstallGatewaySkill(out *output.Writer, agentName, baseDir string) {
+func maybeInstallGatewaySkill(out *output.Writer, agentName, baseDir, content string) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		out.Stderr(fmt.Sprintf("onecli: warning: could not resolve home directory: %v", err))
@@ -291,7 +328,7 @@ func maybeInstallGatewaySkill(out *output.Writer, agentName, baseDir string) {
 	fullPath := filepath.Join(home, baseDir, "skills", "onecli-gateway", "SKILL.md")
 
 	existing, err := os.ReadFile(fullPath)
-	if err == nil && bytes.Equal(existing, []byte(gatewaySkill)) {
+	if err == nil && bytes.Equal(existing, []byte(content)) {
 		return
 	}
 
@@ -299,7 +336,7 @@ func maybeInstallGatewaySkill(out *output.Writer, agentName, baseDir string) {
 		out.Stderr(fmt.Sprintf("onecli: warning: could not create skill directory: %v", err))
 		return
 	}
-	if err := os.WriteFile(fullPath, []byte(gatewaySkill), 0o600); err != nil {
+	if err := os.WriteFile(fullPath, []byte(content), 0o600); err != nil {
 		out.Stderr(fmt.Sprintf("onecli: warning: could not write skill file: %v", err))
 		return
 	}
