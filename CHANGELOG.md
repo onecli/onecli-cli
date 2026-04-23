@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.4.1](https://github.com/onecli/onecli-cli/compare/v1.4.0...v1.4.1) (2026-04-23)
+
+
+### Bug Fixes
+
+* dynamic skill generation and correct connection polling ([#27](https://github.com/onecli/onecli-cli/issues/27)) ([1e93f8d](https://github.com/onecli/onecli-cli/commit/1e93f8d8c6e139fc65a29e4db59bf4da3f4f1099))
+* rename ONECLI_DASHBOARD_URL to ONECLI_URL to match SDK convention ([#29](https://github.com/onecli/onecli-cli/issues/29)) ([d2d28a6](https://github.com/onecli/onecli-cli/commit/d2d28a63d3e93ce8b59d1ab9d423d59586cde159))
+
 ## [1.4.0](https://github.com/onecli/onecli-cli/compare/v1.3.1...v1.4.0) (2026-04-23)
 
 
