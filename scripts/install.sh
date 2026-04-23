@@ -38,9 +38,10 @@ main() {
 
   echo "Detected: $OS/$ARCH"
 
-  # Fetch latest release tag from GitHub API (public repo, no auth needed)
+  # Fetch latest release info from server (avoids GitHub API rate limits)
   echo "Fetching latest release..."
-  LATEST=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" | grep '"tag_name"' | sed -E 's/.*"tag_name": *"([^"]+)".*/\1/')
+  RELEASE_INFO=$(curl -fsSL "https://www.onecli.sh/cli/version?os=${OS}&arch=${ARCH}")
+  LATEST=$(echo "$RELEASE_INFO" | sed -n '1p')
 
   if [ -z "$LATEST" ]; then
     echo "Error: could not determine latest release" >&2
