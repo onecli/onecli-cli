@@ -105,7 +105,7 @@ func (c *RunCmd) Run(out *output.Writer) error {
 		skillContent := buildSkillContent(secrets)
 		maybeInstallGatewaySkill(out, name, dir, skillContent)
 		env = append(env, "ONECLI_AGENT_NAME="+name)
-		env = append(env, "ONECLI_DASHBOARD_URL="+config.APIHost())
+		env = append(env, "ONECLI_URL="+config.APIHost())
 	}
 
 	// Exec — replaces this process so the agent gets direct terminal control.
