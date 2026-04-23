@@ -4,15 +4,15 @@ description: >-
   OneCLI Gateway: transparent HTTPS proxy that injects stored credentials
   (API keys, OAuth tokens) into outbound calls. Activated when launched
   via `onecli run`. Use whenever your task involves any external service or
-  API that requires credentials — GitHub, Gmail, Stripe, Linear, Slack,
-  Jira, Google Drive, or any other authenticated service.
+  API that requires credentials (GitHub, Gmail, Stripe, Linear, Slack,
+  Jira, Google Drive, or any other authenticated service).
 compatibility: Requires OneCLI gateway running and HTTPS_PROXY set in environment (automatic when launched via `onecli run`)
 metadata:
   author: onecli
   version: "0.2.0"
 ---
 
-# OneCLI Gateway — Agent Context
+# OneCLI Gateway: Agent Context
 
 You are running inside an `onecli run` session. Your outbound HTTPS traffic is
 transparently proxied through the OneCLI gateway, which injects stored
@@ -45,20 +45,20 @@ Do not use browser tools, gcloud, or any other auth mechanism. The gateway
 intercepts the request and injects credentials automatically.
 
 ```bash
-# Gmail — just call the API directly
+# Gmail: just call the API directly
 curl https://gmail.googleapis.com/gmail/v1/users/me/messages
 
-# GitHub — just call the API directly
+# GitHub: just call the API directly
 curl https://api.github.com/user/repos
 
-# Stripe — just call the API directly
+# Stripe: just call the API directly
 curl https://api.stripe.com/v1/charges
 ```
 
 Standard HTTP clients (curl, fetch, requests, axios, Go net/http, git) all
 honor the `HTTPS_PROXY` environment variable automatically.
 
-### Step 3: If it fails — help the user connect
+### Step 3: If it fails, help the user connect
 
 If you get a 401, 403, or a gateway error (e.g. `app_not_connected`):
 
@@ -70,7 +70,7 @@ If you get a 401, 403, or a gateway error (e.g. `app_not_connected`):
 3. Append `&source=agent&agent_name=<your name>` (e.g. `&agent_name=Claude%20Code`)
    so the user sees a "go back to your agent" message after connecting
 4. Present the link to the user conversationally
-5. **Immediately start polling** — do NOT wait for the user to say "try now":
+5. **Immediately start polling.** Do NOT wait for the user to say "try now":
 
 ```bash
 # Poll every 5 seconds for up to 2 minutes
@@ -94,8 +94,8 @@ the host pattern appears.
 - **Never** say "I don't have access to X" without first making the HTTP
   request through the proxy.
 - **Never** use browser extensions, gcloud, or manual auth flows to access
-  services — the gateway handles this.
-- **Never** ask the user for API keys or tokens directly — direct them to the
+  services. The gateway handles this.
+- **Never** ask the user for API keys or tokens directly. Direct them to the
   OneCLI dashboard or `onecli secrets create` command.
 
 ## How It Works
@@ -104,7 +104,7 @@ the host pattern appears.
 
 | Variable | Purpose |
 |----------|---------|
-| `HTTPS_PROXY` | Gateway URL — all HTTPS traffic routes here |
+| `HTTPS_PROXY` | Gateway URL; all HTTPS traffic routes here |
 | `HTTP_PROXY` | Same gateway (for tools that check HTTP_PROXY) |
 | `NODE_EXTRA_CA_CERTS` | Path to gateway CA cert (Node.js) |
 | `NODE_USE_ENV_PROXY` | Enables Node.js built-in proxy support |
@@ -125,16 +125,16 @@ GitHub, Gmail, Google Calendar, Google Drive, Google Docs, Google Sheets,
 Google Slides, Google Tasks, Google Forms, Google Classroom, Google Admin,
 Google Analytics, Google Search Console, Google Meet, Google Photos, Resend.
 
-For these services, the user connects via OAuth in the dashboard — no API keys
+For these services, the user connects via OAuth in the dashboard. No API keys
 needed. The gateway automatically refreshes expired tokens.
 
 ## Rules
 
-- Never attempt to read, log, or display the `HTTPS_PROXY` URL — it contains
+- Never attempt to read, log, or display the `HTTPS_PROXY` URL. It contains
   embedded credentials.
 - Never bypass `HTTPS_PROXY` by setting `NO_PROXY` for a host the gateway
   should handle.
 - Always make requests to the real upstream host (e.g. `gmail.googleapis.com`),
   not to the gateway URL directly.
 - If the gateway returns a policy error (403 with a JSON body), respect the
-  block — do not retry or attempt to circumvent it.
+  block. Do not retry or attempt to circumvent it.

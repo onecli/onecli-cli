@@ -43,7 +43,7 @@ func (c *RunCmd) Run(out *output.Writer) error {
 	// Resolve the binary path early — fail fast before the API round-trip.
 	binary, err := exec.LookPath(c.Args[0])
 	if err != nil {
-		return fmt.Errorf("command not found: %s", c.Args[0])
+		return fmt.Errorf("command not found %s: %w", c.Args[0], err)
 	}
 
 	// Fetch gateway configuration from the API.
@@ -65,6 +65,23 @@ func (c *RunCmd) Run(out *output.Writer) error {
 	}
 	rewriteProxyEnvHosts(cfg.Env, gatewayHost)
 
+	// Dry-run: print resolved config without side effects (no CA write,
+	// no skill install, no exec).
+	if c.DryRun {
+		injected := make([]string, 0, len(cfg.Env)+len(caTrustKeys))
+		for k := range cfg.Env {
+			injected = append(injected, k)
+		}
+		if !c.NoCA && cfg.CACertificate != "" {
+			injected = append(injected, caTrustKeys...)
+		}
+		return out.WriteDryRun("Would exec command with OneCLI gateway", map[string]any{
+			"binary":       binary,
+			"args":         c.Args,
+			"env_injected": injected,
+		})
+	}
+
 	// Write CA cert to disk (unless --no-ca).
 	caPath := ""
 	if !c.NoCA && cfg.CACertificate != "" {
@@ -84,27 +101,12 @@ func (c *RunCmd) Run(out *output.Writer) error {
 		maybeInstallGatewaySkill(out, name, dir)
 	}
 
-	// Dry-run: print resolved config and return.
-	if c.DryRun {
-		injected := make([]string, 0, len(cfg.Env)+6)
-		for k := range cfg.Env {
-			injected = append(injected, k)
-		}
-		if caPath != "" {
-			injected = append(injected, "SSL_CERT_FILE", "REQUESTS_CA_BUNDLE",
-				"CURL_CA_BUNDLE", "GIT_SSL_CAINFO", "DENO_CERT")
-		}
-		return out.WriteDryRun("Would exec command with OneCLI gateway", map[string]any{
-			"binary":       binary,
-			"args":         c.Args,
-			"env_injected": injected,
-			"ca_path":      caPath,
-		})
-	}
-
 	// Exec — replaces this process so the agent gets direct terminal control.
 	out.Stderr(fmt.Sprintf("onecli: gateway connected. Starting %s...", c.Args[0]))
-	return syscall.Exec(binary, c.Args, env)
+	if err := syscall.Exec(binary, c.Args, env); err != nil {
+		return fmt.Errorf("exec %s: %w", binary, err)
+	}
+	return nil
 }
 
 // writeGatewayCACert writes the gateway CA PEM to ~/.onecli/gateway-ca.pem.
@@ -128,39 +130,29 @@ func writeGatewayCACert(pem string) (string, error) {
 	return caPath, nil
 }
 
-// proxyEnvKeys is the set of env keys that buildChildEnv may inject.
-// Any pre-existing occurrence inherited from os.Environ() must be stripped
-// before the new values are appended — POSIX getenv returns the first match,
-// so a stale corporate HTTPS_PROXY from the parent shell would otherwise
-// silently win and bypass the gateway.
-var proxyEnvKeys = map[string]struct{}{
-	"HTTPS_PROXY":               {},
-	"HTTP_PROXY":                {},
-	"https_proxy":               {},
-	"http_proxy":                {},
-	"NODE_EXTRA_CA_CERTS":       {},
-	"NODE_USE_ENV_PROXY":        {},
-	"GIT_TERMINAL_PROMPT":       {},
-	"GIT_HTTP_PROXY_AUTHMETHOD": {},
-	"SSL_CERT_FILE":             {},
-	"REQUESTS_CA_BUNDLE":        {},
-	"CURL_CA_BUNDLE":            {},
-	"GIT_SSL_CAINFO":            {},
-	"DENO_CERT":                 {},
-	"ANTHROPIC_API_KEY":         {},
-	"CLAUDE_CODE_OAUTH_TOKEN":   {},
+// caTrustKeys are env vars we inject locally for CA trust. These aren't in
+// the server response but may exist in the parent env and need stripping.
+var caTrustKeys = []string{
+	"NODE_EXTRA_CA_CERTS",
+	"SSL_CERT_FILE",
+	"REQUESTS_CA_BUNDLE",
+	"CURL_CA_BUNDLE",
+	"GIT_SSL_CAINFO",
+	"DENO_CERT",
 }
 
 // buildChildEnv builds the environment for the child process by stripping
 // conflicting keys from the current env, appending the server-provided env,
 // and overriding CA cert paths to use the local file.
 func buildChildEnv(current []string, serverEnv map[string]string, caPath string) []string {
-	// Build the combined set of keys to strip.
-	stripKeys := make(map[string]struct{}, len(proxyEnvKeys)+len(serverEnv))
-	for k := range proxyEnvKeys {
+	// Strip keys the server provides + CA trust keys we inject locally.
+	// This prevents stale inherited values (e.g. a corporate HTTPS_PROXY)
+	// from shadowing the gateway values — POSIX getenv returns the first match.
+	stripKeys := make(map[string]struct{}, len(serverEnv)+len(caTrustKeys))
+	for k := range serverEnv {
 		stripKeys[k] = struct{}{}
 	}
-	for k := range serverEnv {
+	for _, k := range caTrustKeys {
 		stripKeys[k] = struct{}{}
 	}
 
@@ -177,12 +169,26 @@ func buildChildEnv(current []string, serverEnv map[string]string, caPath string)
 		out = append(out, kv)
 	}
 
-	// Append server-provided env (HTTPS_PROXY, credentials, etc.).
+	// Build set of CA trust keys we'll override locally — skip these from
+	// serverEnv so the local paths (appended below) aren't shadowed.
+	// POSIX getenv returns the first match, so order matters.
+	localCAKeys := make(map[string]struct{}, len(caTrustKeys))
+	if caPath != "" {
+		for _, k := range caTrustKeys {
+			localCAKeys[k] = struct{}{}
+		}
+	}
+
+	// Append server-provided env (HTTPS_PROXY, credentials, etc.),
+	// excluding any CA trust keys we'll override with local paths.
 	for k, v := range serverEnv {
+		if _, skip := localCAKeys[k]; skip {
+			continue
+		}
 		out = append(out, k+"="+v)
 	}
 
-	// Append CA trust vars pointing to the local cert file, overriding the
+	// Append CA trust vars pointing to the local cert file, replacing the
 	// Docker container path that the server returns in NODE_EXTRA_CA_CERTS.
 	if caPath != "" {
 		out = append(out,
@@ -247,8 +253,8 @@ func rewriteProxyEnvHosts(env map[string]string, localHost string) {
 	}
 }
 
-// knownAgents maps CLI binary base-names to (agentName, skillsBaseDir) pairs.
-var knownAgents = []struct {
+// supportedAgents maps CLI binary base-names to (agentName, skillsBaseDir) pairs.
+var supportedAgents = []struct {
 	bases     []string
 	agentName string
 	baseDir   string
@@ -264,7 +270,7 @@ var knownAgents = []struct {
 // agent command, or ok=false if the command is not recognized.
 func agentSkillDir(cmd string) (agentName, baseDir string, ok bool) {
 	base := filepath.Base(cmd)
-	for _, a := range knownAgents {
+	for _, a := range supportedAgents {
 		for _, b := range a.bases {
 			if base == b {
 				return a.agentName, a.baseDir, true
@@ -279,6 +285,7 @@ func agentSkillDir(cmd string) (agentName, baseDir string, ok bool) {
 func maybeInstallGatewaySkill(out *output.Writer, agentName, baseDir string) {
 	home, err := os.UserHomeDir()
 	if err != nil {
+		out.Stderr(fmt.Sprintf("onecli: warning: could not resolve home directory: %v", err))
 		return
 	}
 	fullPath := filepath.Join(home, baseDir, "skills", "onecli-gateway", "SKILL.md")

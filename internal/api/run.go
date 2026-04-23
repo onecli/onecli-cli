@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 )
 
 // ContainerConfig is the response from GET /api/container-config.
@@ -19,7 +20,9 @@ type ContainerConfig struct {
 func (c *Client) GetContainerConfig(ctx context.Context, agentIdentifier string) (*ContainerConfig, error) {
 	path := "/api/container-config"
 	if agentIdentifier != "" {
-		path += "?agent=" + agentIdentifier
+		q := url.Values{}
+		q.Set("agent", agentIdentifier)
+		path += "?" + q.Encode()
 	}
 	var cfg ContainerConfig
 	if err := c.do(ctx, http.MethodGet, path, nil, &cfg); err != nil {
