@@ -19,6 +19,7 @@ var version = "dev"
 
 // CLI is the root command. Subcommands are added as fields.
 type CLI struct {
+	Run     RunCmd     `cmd:"" help:"Run a command with OneCLI gateway access."`
 	Version VersionCmd `cmd:"" help:"Print version information."`
 	Help    HelpCmd    `cmd:"" help:"Show available commands."`
 	Agents  AgentsCmd  `cmd:"" help:"Manage agents."`
@@ -127,6 +128,8 @@ func hintForCommand(cmd, host string) string {
 		return "Manage authentication \u2192 " + host
 	case "config":
 		return "Manage configuration \u2192 " + host
+	case "run":
+		return "OneCLI gateway docs \u2192 " + host
 	case "migrate":
 		return "Migrate data to OneCLI Cloud"
 	default:
