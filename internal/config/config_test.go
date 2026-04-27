@@ -29,6 +29,8 @@ func TestEnvUnknownValueDefaultsToProduction(t *testing.T) {
 }
 
 func TestAPIHostDefault(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("ONECLI_ENV", "")
 	t.Setenv("ONECLI_API_HOST", "")
 	// Env var not set and no config file → default
 	got := APIHost()
