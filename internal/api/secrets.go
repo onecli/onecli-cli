@@ -21,9 +21,12 @@ type Secret struct {
 }
 
 // InjectionConfig describes how a secret is injected into requests.
+// Either HeaderName or ParamName should be set, not both.
 type InjectionConfig struct {
-	HeaderName  string `json:"headerName"`
+	HeaderName  string `json:"headerName,omitempty"`
 	ValueFormat string `json:"valueFormat,omitempty"`
+	ParamName   string `json:"paramName,omitempty"`
+	ParamFormat string `json:"paramFormat,omitempty"`
 }
 
 // CreateSecretInput is the request body for creating a secret.

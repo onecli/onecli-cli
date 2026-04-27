@@ -49,8 +49,10 @@ type SecretsCreateCmd struct {
 	Value       string `required:"" help:"Secret value (e.g. API key)."`
 	HostPattern string `required:"" name:"host-pattern" help:"Host pattern to match (e.g. 'api.anthropic.com')."`
 	PathPattern string `optional:"" name:"path-pattern" help:"Path pattern to match (e.g. '/v1/*')."`
-	HeaderName  string `optional:"" name:"header-name" help:"Header name for injection (required for generic type)."`
-	ValueFormat string `optional:"" name:"value-format" help:"Value format template (default: '{value}')."`
+	HeaderName  string `optional:"" name:"header-name" help:"Header name for injection (e.g. 'Authorization')."`
+	ValueFormat string `optional:"" name:"value-format" help:"Value format template for header injection (default: '{value}')."`
+	ParamName   string `optional:"" name:"param-name" help:"URL query parameter name for injection (e.g. 'key')."`
+	ParamFormat string `optional:"" name:"param-format" help:"Value format template for param injection (default: '{value}')."`
 	Json        string `optional:"" help:"Raw JSON payload. Overrides individual flags."`
 	DryRun      bool   `optional:"" name:"dry-run" help:"Validate the request without executing it."`
 }
@@ -62,6 +64,9 @@ func (c *SecretsCreateCmd) Run(out *output.Writer) error {
 			return fmt.Errorf("invalid JSON payload: %w", err)
 		}
 	} else {
+		if c.HeaderName != "" && c.ParamName != "" {
+			return fmt.Errorf("--header-name and --param-name are mutually exclusive")
+		}
 		input = api.CreateSecretInput{
 			Name:        c.Name,
 			Type:        c.Type,
@@ -73,6 +78,11 @@ func (c *SecretsCreateCmd) Run(out *output.Writer) error {
 			input.InjectionConfig = &api.InjectionConfig{
 				HeaderName:  c.HeaderName,
 				ValueFormat: c.ValueFormat,
+			}
+		} else if c.ParamName != "" {
+			input.InjectionConfig = &api.InjectionConfig{
+				ParamName:   c.ParamName,
+				ParamFormat: c.ParamFormat,
 			}
 		}
 	}
@@ -106,7 +116,9 @@ type SecretsUpdateCmd struct {
 	HostPattern string `optional:"" name:"host-pattern" help:"New host pattern."`
 	PathPattern string `optional:"" name:"path-pattern" help:"New path pattern."`
 	HeaderName  string `optional:"" name:"header-name" help:"New header name for injection."`
-	ValueFormat string `optional:"" name:"value-format" help:"New value format template."`
+	ValueFormat string `optional:"" name:"value-format" help:"New value format template for header injection."`
+	ParamName   string `optional:"" name:"param-name" help:"New URL query parameter name for injection."`
+	ParamFormat string `optional:"" name:"param-format" help:"New value format template for param injection."`
 	Json        string `optional:"" help:"Raw JSON payload. Overrides individual flags."`
 	DryRun      bool   `optional:"" name:"dry-run" help:"Validate the request without executing it."`
 }
@@ -122,6 +134,9 @@ func (c *SecretsUpdateCmd) Run(out *output.Writer) error {
 			return fmt.Errorf("invalid JSON payload: %w", err)
 		}
 	} else {
+		if c.HeaderName != "" && c.ParamName != "" {
+			return fmt.Errorf("--header-name and --param-name are mutually exclusive")
+		}
 		if c.Value != "" {
 			input.Value = &c.Value
 		}
@@ -135,6 +150,11 @@ func (c *SecretsUpdateCmd) Run(out *output.Writer) error {
 			input.InjectionConfig = &api.InjectionConfig{
 				HeaderName:  c.HeaderName,
 				ValueFormat: c.ValueFormat,
+			}
+		} else if c.ParamName != "" {
+			input.InjectionConfig = &api.InjectionConfig{
+				ParamName:   c.ParamName,
+				ParamFormat: c.ParamFormat,
 			}
 		}
 	}
