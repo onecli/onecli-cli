@@ -102,7 +102,11 @@ func (c *RunCmd) Run(out *output.Writer) error {
 	// Fetch configured secrets to generate the dynamic services section.
 	// Inject the agent name so the skill can reference it deterministically.
 	if name, dir, ok := agentSkillDir(c.Args[0]); ok {
-		secrets, _ := client.ListSecrets(newContext(), resolveProject(c.Project))
+		project, err := resolveProject(c.Project)
+		if err != nil {
+			return err
+		}
+		secrets, _ := client.ListSecrets(newContext(), project)
 		skillContent := buildSkillContent(secrets)
 		maybeInstallGatewaySkill(out, name, dir, skillContent)
 		env = append(env, "ONECLI_AGENT_NAME="+name)

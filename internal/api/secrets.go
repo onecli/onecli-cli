@@ -60,7 +60,7 @@ func (c *Client) ListSecrets(ctx context.Context, projectID string) ([]Secret, e
 
 // CreateSecret creates a new secret.
 // If projectID is non-empty, the secret is created in that project.
-func (c *Client) CreateSecret(ctx context.Context, input CreateSecretInput, projectID string) (*Secret, error) {
+func (c *Client) CreateSecret(ctx context.Context, projectID string, input CreateSecretInput) (*Secret, error) {
 	path := withProjectQuery("/api/secrets", projectID)
 	var secret Secret
 	if err := c.do(ctx, http.MethodPost, path, input, &secret); err != nil {

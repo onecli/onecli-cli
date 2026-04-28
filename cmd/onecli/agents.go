@@ -32,11 +32,15 @@ type AgentsListCmd struct {
 }
 
 func (c *AgentsListCmd) Run(out *output.Writer) error {
+	project, err := resolveProject(c.Project)
+	if err != nil {
+		return err
+	}
 	client, err := newClient()
 	if err != nil {
 		return err
 	}
-	agents, err := client.ListAgents(newContext(), resolveProject(c.Project))
+	agents, err := client.ListAgents(newContext(), project)
 	if err != nil {
 		return err
 	}
@@ -92,11 +96,15 @@ func (c *AgentsCreateCmd) Run(out *output.Writer) error {
 		return out.WriteDryRun("Would create agent", input)
 	}
 
+	project, err := resolveProject(c.Project)
+	if err != nil {
+		return err
+	}
 	client, err := newClient()
 	if err != nil {
 		return err
 	}
-	agent, err := client.CreateAgent(newContext(), input, resolveProject(c.Project))
+	agent, err := client.CreateAgent(newContext(), project, input)
 	if err != nil {
 		return err
 	}

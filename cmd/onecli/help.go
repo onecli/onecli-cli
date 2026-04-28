@@ -37,7 +37,7 @@ func (cmd *HelpCmd) Run(out *output.Writer) error {
 	return out.Write(HelpResponse{
 		Name:        "onecli",
 		Version:     version,
-		Description: "CLI for managing OneCLI agents, secrets, rules, and configuration.",
+		Description: "CLI for managing OneCLI agents, secrets, rules, projects, and configuration.",
 		Commands: []CommandInfo{
 			{Name: "run", Description: "Run a command with OneCLI gateway access.", Args: []ArgInfo{
 				{Name: "<command>", Required: true, Description: "Command to execute (e.g. claude, cursor, codex)."},
@@ -124,8 +124,15 @@ func (cmd *HelpCmd) Run(out *output.Writer) error {
 				{Name: "--id", Required: true, Description: "ID of the rule to delete."},
 			}},
 			{Name: "projects list", Description: "List all projects."},
+			{Name: "projects get", Description: "Get a single project by ID.", Args: []ArgInfo{
+				{Name: "--id", Required: true, Description: "ID of the project to retrieve."},
+			}},
 			{Name: "projects create", Description: "Create a new project.", Args: []ArgInfo{
 				{Name: "--name", Required: true, Description: "Display name for the project."},
+			}},
+			{Name: "projects update", Description: "Update an existing project.", Args: []ArgInfo{
+				{Name: "--id", Required: true, Description: "ID of the project to update."},
+				{Name: "--name", Description: "New display name."},
 			}},
 			{Name: "projects delete", Description: "Delete a project.", Args: []ArgInfo{
 				{Name: "--id", Required: true, Description: "ID of the project to delete."},

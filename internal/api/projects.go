@@ -19,6 +19,11 @@ type CreateProjectInput struct {
 	Name string `json:"name"`
 }
 
+// UpdateProjectInput is the request body for updating a project.
+type UpdateProjectInput struct {
+	Name *string `json:"name,omitempty"`
+}
+
 // ListProjects returns all projects for the authenticated user.
 func (c *Client) ListProjects(ctx context.Context) ([]Project, error) {
 	var projects []Project
@@ -28,11 +33,29 @@ func (c *Client) ListProjects(ctx context.Context) ([]Project, error) {
 	return projects, nil
 }
 
+// GetProject returns a single project by ID.
+func (c *Client) GetProject(ctx context.Context, id string) (*Project, error) {
+	var project Project
+	if err := c.do(ctx, http.MethodGet, "/api/projects/"+id, nil, &project); err != nil {
+		return nil, fmt.Errorf("getting project: %w", err)
+	}
+	return &project, nil
+}
+
 // CreateProject creates a new project.
 func (c *Client) CreateProject(ctx context.Context, input CreateProjectInput) (*Project, error) {
 	var project Project
 	if err := c.do(ctx, http.MethodPost, "/api/projects", input, &project); err != nil {
 		return nil, fmt.Errorf("creating project: %w", err)
+	}
+	return &project, nil
+}
+
+// UpdateProject updates an existing project and returns the updated project.
+func (c *Client) UpdateProject(ctx context.Context, id string, input UpdateProjectInput) (*Project, error) {
+	var project Project
+	if err := c.do(ctx, http.MethodPatch, "/api/projects/"+id, input, &project); err != nil {
+		return nil, fmt.Errorf("updating project: %w", err)
 	}
 	return &project, nil
 }

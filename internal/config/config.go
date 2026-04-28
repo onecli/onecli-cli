@@ -194,9 +194,12 @@ func GetConfigValue(key string) (string, error) {
 		return "", fmt.Errorf("%w: %s", ErrUnknownConfigKey, key)
 	}
 
-	// For api-host, respect the full precedence chain.
-	if key == "api-host" {
+	// For keys with env var overrides, respect the full precedence chain.
+	switch key {
+	case "api-host":
 		return APIHost(), nil
+	case "project":
+		return Project(), nil
 	}
 
 	cfg, err := readConfig()

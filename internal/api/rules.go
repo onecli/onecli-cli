@@ -69,7 +69,7 @@ func (c *Client) GetRule(ctx context.Context, id string) (*Rule, error) {
 
 // CreateRule creates a new policy rule.
 // If projectID is non-empty, the rule is created in that project.
-func (c *Client) CreateRule(ctx context.Context, input CreateRuleInput, projectID string) (*Rule, error) {
+func (c *Client) CreateRule(ctx context.Context, projectID string, input CreateRuleInput) (*Rule, error) {
 	path := withProjectQuery("/api/rules", projectID)
 	var rule Rule
 	if err := c.do(ctx, http.MethodPost, path, input, &rule); err != nil {

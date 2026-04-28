@@ -26,11 +26,15 @@ type SecretsListCmd struct {
 }
 
 func (c *SecretsListCmd) Run(out *output.Writer) error {
+	project, err := resolveProject(c.Project)
+	if err != nil {
+		return err
+	}
 	client, err := newClient()
 	if err != nil {
 		return err
 	}
-	secrets, err := client.ListSecrets(newContext(), resolveProject(c.Project))
+	secrets, err := client.ListSecrets(newContext(), project)
 	if err != nil {
 		return err
 	}
@@ -100,11 +104,15 @@ func (c *SecretsCreateCmd) Run(out *output.Writer) error {
 		return out.WriteDryRun("Would create secret", preview)
 	}
 
+	project, err := resolveProject(c.Project)
+	if err != nil {
+		return err
+	}
 	client, err := newClient()
 	if err != nil {
 		return err
 	}
-	secret, err := client.CreateSecret(newContext(), input, resolveProject(c.Project))
+	secret, err := client.CreateSecret(newContext(), project, input)
 	if err != nil {
 		return err
 	}

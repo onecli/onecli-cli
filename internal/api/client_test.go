@@ -245,3 +245,45 @@ func TestDoSendsCorrectPath(t *testing.T) {
 		t.Errorf("path = %q, want /api/agents", gotPath)
 	}
 }
+
+func TestWithProjectQuery(t *testing.T) {
+	tests := []struct {
+		name      string
+		path      string
+		projectID string
+		want      string
+	}{
+		{
+			name:      "empty project returns path unchanged",
+			path:      "/api/agents",
+			projectID: "",
+			want:      "/api/agents",
+		},
+		{
+			name:      "appends projectId query param",
+			path:      "/api/agents",
+			projectID: "my-project",
+			want:      "/api/agents?projectId=my-project",
+		},
+		{
+			name:      "preserves existing query params",
+			path:      "/api/agents?foo=bar",
+			projectID: "proj",
+			want:      "/api/agents?foo=bar&projectId=proj",
+		},
+		{
+			name:      "encodes special characters",
+			path:      "/api/secrets",
+			projectID: "has space&more",
+			want:      "/api/secrets?projectId=has+space%26more",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := withProjectQuery(tt.path, tt.projectID)
+			if got != tt.want {
+				t.Errorf("withProjectQuery(%q, %q) = %q, want %q", tt.path, tt.projectID, got, tt.want)
+			}
+		})
+	}
+}

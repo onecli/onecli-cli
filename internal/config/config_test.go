@@ -141,6 +141,67 @@ func TestGetConfigValueAPIHostEnvTakesPrecedence(t *testing.T) {
 	}
 }
 
+func TestProjectDefault(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	t.Setenv("ONECLI_PROJECT", "")
+
+	if got := Project(); got != "" {
+		t.Errorf("Project() = %q, want empty", got)
+	}
+}
+
+func TestProjectEnvOverride(t *testing.T) {
+	t.Setenv("ONECLI_PROJECT", "my-proj")
+	if got := Project(); got != "my-proj" {
+		t.Errorf("Project() = %q, want my-proj", got)
+	}
+}
+
+func TestProjectFromConfigFile(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	t.Setenv("ONECLI_ENV", "")
+	t.Setenv("ONECLI_PROJECT", "")
+
+	if err := SetConfigValue("project", "file-proj"); err != nil {
+		t.Fatal(err)
+	}
+	if got := Project(); got != "file-proj" {
+		t.Errorf("Project() = %q, want file-proj", got)
+	}
+}
+
+func TestProjectEnvTakesPrecedenceOverFile(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	t.Setenv("ONECLI_ENV", "")
+
+	_ = SetConfigValue("project", "file-proj")
+	t.Setenv("ONECLI_PROJECT", "env-proj")
+
+	if got := Project(); got != "env-proj" {
+		t.Errorf("Project() = %q, env var should take precedence", got)
+	}
+}
+
+func TestGetConfigValueProjectRespectsEnv(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	t.Setenv("ONECLI_ENV", "")
+
+	_ = SetConfigValue("project", "file-proj")
+	t.Setenv("ONECLI_PROJECT", "env-proj")
+
+	val, err := GetConfigValue("project")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if val != "env-proj" {
+		t.Errorf("GetConfigValue(project) = %q, env var should take precedence", val)
+	}
+}
+
 func TestGetConfigValueDefaultWhenNoFile(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("HOME", dir)

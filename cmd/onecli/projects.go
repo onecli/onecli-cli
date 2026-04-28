@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/onecli/onecli-cli/internal/api"
@@ -11,7 +12,9 @@ import (
 // ProjectsCmd is the `onecli projects` command group.
 type ProjectsCmd struct {
 	List   ProjectsListCmd   `cmd:"" help:"List all projects."`
+	Get    ProjectsGetCmd    `cmd:"" help:"Get a single project by ID."`
 	Create ProjectsCreateCmd `cmd:"" help:"Create a new project."`
+	Update ProjectsUpdateCmd `cmd:"" help:"Update an existing project."`
 	Delete ProjectsDeleteCmd `cmd:"" help:"Delete a project."`
 }
 
@@ -40,15 +43,44 @@ func (c *ProjectsListCmd) Run(out *output.Writer) error {
 	return out.WriteFiltered(projects, c.Fields)
 }
 
+// ProjectsGetCmd is `onecli projects get`.
+type ProjectsGetCmd struct {
+	ID     string `required:"" help:"ID of the project to retrieve."`
+	Fields string `optional:"" help:"Comma-separated list of fields to include in output."`
+}
+
+func (c *ProjectsGetCmd) Run(out *output.Writer) error {
+	if err := validate.ResourceID(c.ID); err != nil {
+		return fmt.Errorf("invalid project ID: %w", err)
+	}
+	client, err := newClient()
+	if err != nil {
+		return err
+	}
+	project, err := client.GetProject(newContext(), c.ID)
+	if err != nil {
+		return err
+	}
+	return out.WriteFiltered(project, c.Fields)
+}
+
 // ProjectsCreateCmd is `onecli projects create`.
 type ProjectsCreateCmd struct {
 	Name   string `required:"" help:"Display name for the project."`
+	Json   string `optional:"" help:"Raw JSON payload. Overrides individual flags."`
 	DryRun bool   `optional:"" name:"dry-run" help:"Validate the request without executing it."`
 }
 
 func (c *ProjectsCreateCmd) Run(out *output.Writer) error {
-	input := api.CreateProjectInput{
-		Name: c.Name,
+	var input api.CreateProjectInput
+	if c.Json != "" {
+		if err := json.Unmarshal([]byte(c.Json), &input); err != nil {
+			return fmt.Errorf("invalid JSON payload: %w", err)
+		}
+	} else {
+		input = api.CreateProjectInput{
+			Name: c.Name,
+		}
 	}
 
 	if c.DryRun {
@@ -60,6 +92,45 @@ func (c *ProjectsCreateCmd) Run(out *output.Writer) error {
 		return err
 	}
 	project, err := client.CreateProject(newContext(), input)
+	if err != nil {
+		return err
+	}
+	return out.Write(project)
+}
+
+// ProjectsUpdateCmd is `onecli projects update`.
+type ProjectsUpdateCmd struct {
+	ID     string `required:"" help:"ID of the project to update."`
+	Name   string `optional:"" help:"New display name."`
+	Json   string `optional:"" help:"Raw JSON payload. Overrides individual flags."`
+	DryRun bool   `optional:"" name:"dry-run" help:"Validate the request without executing it."`
+}
+
+func (c *ProjectsUpdateCmd) Run(out *output.Writer) error {
+	if err := validate.ResourceID(c.ID); err != nil {
+		return fmt.Errorf("invalid project ID: %w", err)
+	}
+
+	var input api.UpdateProjectInput
+	if c.Json != "" {
+		if err := json.Unmarshal([]byte(c.Json), &input); err != nil {
+			return fmt.Errorf("invalid JSON payload: %w", err)
+		}
+	} else {
+		if c.Name != "" {
+			input.Name = &c.Name
+		}
+	}
+
+	if c.DryRun {
+		return out.WriteDryRun("Would update project", map[string]any{"id": c.ID, "input": input})
+	}
+
+	client, err := newClient()
+	if err != nil {
+		return err
+	}
+	project, err := client.UpdateProject(newContext(), c.ID, input)
 	if err != nil {
 		return err
 	}

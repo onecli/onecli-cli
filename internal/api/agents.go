@@ -70,7 +70,7 @@ func (c *Client) GetDefaultAgent(ctx context.Context) (*Agent, error) {
 
 // CreateAgent creates a new agent.
 // If projectID is non-empty, the agent is created in that project.
-func (c *Client) CreateAgent(ctx context.Context, input CreateAgentInput, projectID string) (*Agent, error) {
+func (c *Client) CreateAgent(ctx context.Context, projectID string, input CreateAgentInput) (*Agent, error) {
 	path := withProjectQuery("/api/agents", projectID)
 	var agent Agent
 	if err := c.do(ctx, http.MethodPost, path, input, &agent); err != nil {

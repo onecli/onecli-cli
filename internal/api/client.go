@@ -30,13 +30,18 @@ func New(baseURL, apiKey string) *Client {
 }
 
 // withProjectQuery appends a projectId query param to path when projectID is non-empty.
-func withProjectQuery(path, projectID string) string {
+func withProjectQuery(basePath, projectID string) string {
 	if projectID == "" {
-		return path
+		return basePath
 	}
-	q := url.Values{}
+	u, err := url.Parse(basePath)
+	if err != nil {
+		return basePath
+	}
+	q := u.Query()
 	q.Set("projectId", projectID)
-	return path + "?" + q.Encode()
+	u.RawQuery = q.Encode()
+	return u.String()
 }
 
 // APIError represents an error response from the API.

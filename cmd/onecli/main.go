@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/onecli/onecli-cli/internal/config"
 	"github.com/onecli/onecli-cli/pkg/exitcode"
 	"github.com/onecli/onecli-cli/pkg/output"
+	"github.com/onecli/onecli-cli/pkg/validate"
 )
 
 // version is set at build time via ldflags.
@@ -49,7 +51,7 @@ func main() {
 	cli := &CLI{}
 	k, err := kong.New(cli,
 		kong.Name("onecli"),
-		kong.Description("CLI for managing OneCLI agents, secrets, rules, and configuration."),
+		kong.Description("CLI for managing OneCLI agents, secrets, rules, projects, and configuration."),
 		kong.Help(jsonHelpPrinter(out)),
 		kong.Bind(out),
 	)
@@ -114,11 +116,19 @@ func newContext() context.Context {
 }
 
 // resolveProject returns the project from the flag value, falling back to config.
-func resolveProject(flag string) string {
-	if flag != "" {
-		return flag
+// Returns an error if the resolved value fails input validation.
+func resolveProject(flag string) (string, error) {
+	v := flag
+	if v == "" {
+		v = config.Project()
 	}
-	return config.Project()
+	if v == "" {
+		return "", nil
+	}
+	if err := validate.ResourceID(v); err != nil {
+		return "", fmt.Errorf("invalid project slug: %w", err)
+	}
+	return v, nil
 }
 
 // hintForCommand returns a contextual hint message based on the active command group.

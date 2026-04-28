@@ -27,11 +27,15 @@ type RulesListCmd struct {
 }
 
 func (c *RulesListCmd) Run(out *output.Writer) error {
+	project, err := resolveProject(c.Project)
+	if err != nil {
+		return err
+	}
 	client, err := newClient()
 	if err != nil {
 		return err
 	}
-	rules, err := client.ListRules(newContext(), resolveProject(c.Project))
+	rules, err := client.ListRules(newContext(), project)
 	if err != nil {
 		return err
 	}
@@ -113,11 +117,15 @@ func (c *RulesCreateCmd) Run(out *output.Writer) error {
 		return out.WriteDryRun("Would create rule", input)
 	}
 
+	project, err := resolveProject(c.Project)
+	if err != nil {
+		return err
+	}
 	client, err := newClient()
 	if err != nil {
 		return err
 	}
-	rule, err := client.CreateRule(newContext(), input, resolveProject(c.Project))
+	rule, err := client.CreateRule(newContext(), project, input)
 	if err != nil {
 		return err
 	}
