@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.5.0](https://github.com/onecli/onecli-cli/compare/v1.4.1...v1.5.0) (2026-04-28)
+
+
+### Features
+
+* add project scoping and restore agent secret commands ([#34](https://github.com/onecli/onecli-cli/issues/34)) ([f0c567c](https://github.com/onecli/onecli-cli/commit/f0c567c4bb26b9ac8eaada0f58c5c82814d64edd))
+* support query param injection in secrets CLI ([#32](https://github.com/onecli/onecli-cli/issues/32)) ([9a04dee](https://github.com/onecli/onecli-cli/commit/9a04dee92c45ace05b182432e1caea6a0df2b2b5))
+
 ## [1.4.1](https://github.com/onecli/onecli-cli/compare/v1.4.0...v1.4.1) (2026-04-23)
 
 
