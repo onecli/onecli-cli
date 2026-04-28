@@ -49,9 +49,11 @@ type SuccessResponse struct {
 }
 
 // ListAgents returns all agents for the authenticated user.
-func (c *Client) ListAgents(ctx context.Context) ([]Agent, error) {
+// If projectID is non-empty, results are scoped to that project.
+func (c *Client) ListAgents(ctx context.Context, projectID string) ([]Agent, error) {
+	path := withProjectQuery("/api/agents", projectID)
 	var agents []Agent
-	if err := c.do(ctx, http.MethodGet, "/api/agents", nil, &agents); err != nil {
+	if err := c.do(ctx, http.MethodGet, path, nil, &agents); err != nil {
 		return nil, fmt.Errorf("listing agents: %w", err)
 	}
 	return agents, nil
@@ -67,9 +69,11 @@ func (c *Client) GetDefaultAgent(ctx context.Context) (*Agent, error) {
 }
 
 // CreateAgent creates a new agent.
-func (c *Client) CreateAgent(ctx context.Context, input CreateAgentInput) (*Agent, error) {
+// If projectID is non-empty, the agent is created in that project.
+func (c *Client) CreateAgent(ctx context.Context, input CreateAgentInput, projectID string) (*Agent, error) {
+	path := withProjectQuery("/api/agents", projectID)
 	var agent Agent
-	if err := c.do(ctx, http.MethodPost, "/api/agents", input, &agent); err != nil {
+	if err := c.do(ctx, http.MethodPost, path, input, &agent); err != nil {
 		return nil, fmt.Errorf("creating agent: %w", err)
 	}
 	return &agent, nil

@@ -25,9 +25,10 @@ type AgentsCmd struct {
 
 // AgentsListCmd is `onecli agents list`.
 type AgentsListCmd struct {
-	Fields string `optional:"" help:"Comma-separated list of fields to include in output."`
-	Quiet  string `optional:"" name:"quiet" help:"Output only the specified field, one per line."`
-	Max    int    `optional:"" default:"20" help:"Maximum number of results to return."`
+	Project string `optional:"" short:"p" help:"Project slug."`
+	Fields  string `optional:"" help:"Comma-separated list of fields to include in output."`
+	Quiet   string `optional:"" name:"quiet" help:"Output only the specified field, one per line."`
+	Max     int    `optional:"" default:"20" help:"Maximum number of results to return."`
 }
 
 func (c *AgentsListCmd) Run(out *output.Writer) error {
@@ -35,7 +36,7 @@ func (c *AgentsListCmd) Run(out *output.Writer) error {
 	if err != nil {
 		return err
 	}
-	agents, err := client.ListAgents(newContext())
+	agents, err := client.ListAgents(newContext(), resolveProject(c.Project))
 	if err != nil {
 		return err
 	}
@@ -67,6 +68,7 @@ func (c *AgentsGetDefaultCmd) Run(out *output.Writer) error {
 
 // AgentsCreateCmd is `onecli agents create`.
 type AgentsCreateCmd struct {
+	Project    string `optional:"" short:"p" help:"Project slug."`
 	Name       string `required:"" help:"Display name for the agent."`
 	Identifier string `required:"" help:"Unique identifier (lowercase letters, numbers, hyphens)."`
 	Json       string `optional:"" help:"Raw JSON payload. Overrides individual flags."`
@@ -94,7 +96,7 @@ func (c *AgentsCreateCmd) Run(out *output.Writer) error {
 	if err != nil {
 		return err
 	}
-	agent, err := client.CreateAgent(newContext(), input)
+	agent, err := client.CreateAgent(newContext(), input, resolveProject(c.Project))
 	if err != nil {
 		return err
 	}
@@ -174,8 +176,7 @@ func (c *AgentsRegenerateTokenCmd) Run(out *output.Writer) error {
 
 // AgentsSecretsCmd is `onecli agents secrets`.
 type AgentsSecretsCmd struct {
-	ID     string `required:"" help:"ID of the agent."`
-	Fields string `optional:"" help:"Comma-separated list of fields to include in output."`
+	ID string `required:"" help:"ID of the agent."`
 }
 
 func (c *AgentsSecretsCmd) Run(out *output.Writer) error {

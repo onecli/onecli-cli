@@ -19,9 +19,10 @@ type SecretsCmd struct {
 
 // SecretsListCmd is `onecli secrets list`.
 type SecretsListCmd struct {
-	Fields string `optional:"" help:"Comma-separated list of fields to include in output."`
-	Quiet  string `optional:"" name:"quiet" help:"Output only the specified field, one per line."`
-	Max    int    `optional:"" default:"20" help:"Maximum number of results to return."`
+	Project string `optional:"" short:"p" help:"Project slug."`
+	Fields  string `optional:"" help:"Comma-separated list of fields to include in output."`
+	Quiet   string `optional:"" name:"quiet" help:"Output only the specified field, one per line."`
+	Max     int    `optional:"" default:"20" help:"Maximum number of results to return."`
 }
 
 func (c *SecretsListCmd) Run(out *output.Writer) error {
@@ -29,7 +30,7 @@ func (c *SecretsListCmd) Run(out *output.Writer) error {
 	if err != nil {
 		return err
 	}
-	secrets, err := client.ListSecrets(newContext())
+	secrets, err := client.ListSecrets(newContext(), resolveProject(c.Project))
 	if err != nil {
 		return err
 	}
@@ -44,6 +45,7 @@ func (c *SecretsListCmd) Run(out *output.Writer) error {
 
 // SecretsCreateCmd is `onecli secrets create`.
 type SecretsCreateCmd struct {
+	Project     string `optional:"" short:"p" help:"Project slug."`
 	Name        string `required:"" help:"Display name for the secret."`
 	Type        string `required:"" help:"Secret type: 'anthropic' or 'generic'."`
 	Value       string `required:"" help:"Secret value (e.g. API key)."`
@@ -102,7 +104,7 @@ func (c *SecretsCreateCmd) Run(out *output.Writer) error {
 	if err != nil {
 		return err
 	}
-	secret, err := client.CreateSecret(newContext(), input)
+	secret, err := client.CreateSecret(newContext(), input, resolveProject(c.Project))
 	if err != nil {
 		return err
 	}

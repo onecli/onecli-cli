@@ -1,0 +1,90 @@
+package main
+
+import (
+	"fmt"
+
+	"github.com/onecli/onecli-cli/internal/api"
+	"github.com/onecli/onecli-cli/pkg/output"
+	"github.com/onecli/onecli-cli/pkg/validate"
+)
+
+// ProjectsCmd is the `onecli projects` command group.
+type ProjectsCmd struct {
+	List   ProjectsListCmd   `cmd:"" help:"List all projects."`
+	Create ProjectsCreateCmd `cmd:"" help:"Create a new project."`
+	Delete ProjectsDeleteCmd `cmd:"" help:"Delete a project."`
+}
+
+// ProjectsListCmd is `onecli projects list`.
+type ProjectsListCmd struct {
+	Fields string `optional:"" help:"Comma-separated list of fields to include in output."`
+	Quiet  string `optional:"" name:"quiet" help:"Output only the specified field, one per line."`
+	Max    int    `optional:"" default:"20" help:"Maximum number of results to return."`
+}
+
+func (c *ProjectsListCmd) Run(out *output.Writer) error {
+	client, err := newClient()
+	if err != nil {
+		return err
+	}
+	projects, err := client.ListProjects(newContext())
+	if err != nil {
+		return err
+	}
+	if c.Max > 0 && len(projects) > c.Max {
+		projects = projects[:c.Max]
+	}
+	if c.Quiet != "" {
+		return out.WriteQuiet(projects, c.Quiet)
+	}
+	return out.WriteFiltered(projects, c.Fields)
+}
+
+// ProjectsCreateCmd is `onecli projects create`.
+type ProjectsCreateCmd struct {
+	Name   string `required:"" help:"Display name for the project."`
+	DryRun bool   `optional:"" name:"dry-run" help:"Validate the request without executing it."`
+}
+
+func (c *ProjectsCreateCmd) Run(out *output.Writer) error {
+	input := api.CreateProjectInput{
+		Name: c.Name,
+	}
+
+	if c.DryRun {
+		return out.WriteDryRun("Would create project", input)
+	}
+
+	client, err := newClient()
+	if err != nil {
+		return err
+	}
+	project, err := client.CreateProject(newContext(), input)
+	if err != nil {
+		return err
+	}
+	return out.Write(project)
+}
+
+// ProjectsDeleteCmd is `onecli projects delete`.
+type ProjectsDeleteCmd struct {
+	ID     string `required:"" help:"ID of the project to delete."`
+	DryRun bool   `optional:"" name:"dry-run" help:"Validate the request without executing it."`
+}
+
+func (c *ProjectsDeleteCmd) Run(out *output.Writer) error {
+	if err := validate.ResourceID(c.ID); err != nil {
+		return fmt.Errorf("invalid project ID: %w", err)
+	}
+	if c.DryRun {
+		return out.WriteDryRun("Would delete project", map[string]string{"id": c.ID})
+	}
+	client, err := newClient()
+	if err != nil {
+		return err
+	}
+	if err := client.DeleteProject(newContext(), c.ID); err != nil {
+		return err
+	}
+	return out.Write(map[string]string{"status": "deleted", "id": c.ID})
+}

@@ -41,14 +41,18 @@ func (cmd *HelpCmd) Run(out *output.Writer) error {
 		Commands: []CommandInfo{
 			{Name: "run", Description: "Run a command with OneCLI gateway access.", Args: []ArgInfo{
 				{Name: "<command>", Required: true, Description: "Command to execute (e.g. claude, cursor, codex)."},
+				{Name: "--project, -p", Description: "Project slug."},
 				{Name: "--agent", Description: "OneCLI agent identifier (uses default if omitted)."},
 				{Name: "--gateway", Description: "Gateway host:port override (default: derived from API host)."},
 				{Name: "--no-ca", Description: "Skip CA cert write and CA trust env injection."},
 				{Name: "--dry-run", Description: "Print resolved env and command without executing."},
 			}},
-			{Name: "agents list", Description: "List all agents."},
+			{Name: "agents list", Description: "List all agents.", Args: []ArgInfo{
+				{Name: "--project, -p", Description: "Project slug."},
+			}},
 			{Name: "agents get-default", Description: "Get the default agent."},
 			{Name: "agents create", Description: "Create a new agent.", Args: []ArgInfo{
+				{Name: "--project, -p", Description: "Project slug."},
 				{Name: "--name", Required: true, Description: "Display name for the agent."},
 				{Name: "--identifier", Required: true, Description: "Unique identifier (lowercase letters, numbers, hyphens)."},
 			}},
@@ -73,8 +77,11 @@ func (cmd *HelpCmd) Run(out *output.Writer) error {
 				{Name: "--id", Required: true, Description: "ID of the agent."},
 				{Name: "--mode", Required: true, Description: "Secret mode: 'all' or 'selective'."},
 			}},
-			{Name: "secrets list", Description: "List all secrets."},
+			{Name: "secrets list", Description: "List all secrets.", Args: []ArgInfo{
+				{Name: "--project, -p", Description: "Project slug."},
+			}},
 			{Name: "secrets create", Description: "Create a new secret.", Args: []ArgInfo{
+				{Name: "--project, -p", Description: "Project slug."},
 				{Name: "--name", Required: true, Description: "Display name for the secret."},
 				{Name: "--type", Required: true, Description: "Secret type: 'anthropic' or 'generic'."},
 				{Name: "--value", Required: true, Description: "Secret value (e.g. API key)."},
@@ -101,8 +108,11 @@ func (cmd *HelpCmd) Run(out *output.Writer) error {
 			{Name: "apps disconnect", Description: "Disconnect an app connection.", Args: []ArgInfo{
 				{Name: "--provider", Required: true, Description: "Provider name (e.g. 'github', 'gmail')."},
 			}},
-			{Name: "rules list", Description: "List all policy rules."},
+			{Name: "rules list", Description: "List all policy rules.", Args: []ArgInfo{
+				{Name: "--project, -p", Description: "Project slug."},
+			}},
 			{Name: "rules create", Description: "Create a new policy rule.", Args: []ArgInfo{
+				{Name: "--project, -p", Description: "Project slug."},
 				{Name: "--name", Required: true, Description: "Display name for the rule."},
 				{Name: "--host-pattern", Required: true, Description: "Host pattern to match."},
 				{Name: "--action", Required: true, Description: "Action: 'block' or 'rate_limit'."},
@@ -112,6 +122,13 @@ func (cmd *HelpCmd) Run(out *output.Writer) error {
 			}},
 			{Name: "rules delete", Description: "Delete a policy rule.", Args: []ArgInfo{
 				{Name: "--id", Required: true, Description: "ID of the rule to delete."},
+			}},
+			{Name: "projects list", Description: "List all projects."},
+			{Name: "projects create", Description: "Create a new project.", Args: []ArgInfo{
+				{Name: "--name", Required: true, Description: "Display name for the project."},
+			}},
+			{Name: "projects delete", Description: "Delete a project.", Args: []ArgInfo{
+				{Name: "--id", Required: true, Description: "ID of the project to delete."},
 			}},
 			{Name: "auth login", Description: "Store API key for authentication."},
 			{Name: "auth logout", Description: "Remove stored API key."},

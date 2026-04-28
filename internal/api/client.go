@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -26,6 +27,16 @@ func New(baseURL, apiKey string) *Client {
 			Timeout: 30 * time.Second,
 		},
 	}
+}
+
+// withProjectQuery appends a projectId query param to path when projectID is non-empty.
+func withProjectQuery(path, projectID string) string {
+	if projectID == "" {
+		return path
+	}
+	q := url.Values{}
+	q.Set("projectId", projectID)
+	return path + "?" + q.Encode()
 }
 
 // APIError represents an error response from the API.

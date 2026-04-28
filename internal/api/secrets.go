@@ -48,18 +48,22 @@ type UpdateSecretInput struct {
 }
 
 // ListSecrets returns all secrets for the authenticated user.
-func (c *Client) ListSecrets(ctx context.Context) ([]Secret, error) {
+// If projectID is non-empty, results are scoped to that project.
+func (c *Client) ListSecrets(ctx context.Context, projectID string) ([]Secret, error) {
+	path := withProjectQuery("/api/secrets", projectID)
 	var secrets []Secret
-	if err := c.do(ctx, http.MethodGet, "/api/secrets", nil, &secrets); err != nil {
+	if err := c.do(ctx, http.MethodGet, path, nil, &secrets); err != nil {
 		return nil, fmt.Errorf("listing secrets: %w", err)
 	}
 	return secrets, nil
 }
 
 // CreateSecret creates a new secret.
-func (c *Client) CreateSecret(ctx context.Context, input CreateSecretInput) (*Secret, error) {
+// If projectID is non-empty, the secret is created in that project.
+func (c *Client) CreateSecret(ctx context.Context, input CreateSecretInput, projectID string) (*Secret, error) {
+	path := withProjectQuery("/api/secrets", projectID)
 	var secret Secret
-	if err := c.do(ctx, http.MethodPost, "/api/secrets", input, &secret); err != nil {
+	if err := c.do(ctx, http.MethodPost, path, input, &secret); err != nil {
 		return nil, fmt.Errorf("creating secret: %w", err)
 	}
 	return &secret, nil

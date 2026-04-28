@@ -22,6 +22,7 @@ var gatewaySkill string
 
 // RunCmd is `onecli run -- <command> [args...]`.
 type RunCmd struct {
+	Project string   `optional:"" short:"p" help:"Project slug."`
 	Agent   string   `optional:"" name:"agent" help:"OneCLI agent identifier (uses default agent if omitted)."`
 	Gateway string   `optional:"" name:"gateway" help:"Gateway host:port override (default: derived from API host)."`
 	NoCA    bool     `optional:"" name:"no-ca" help:"Skip writing the CA cert and CA trust env injection."`
@@ -101,7 +102,7 @@ func (c *RunCmd) Run(out *output.Writer) error {
 	// Fetch configured secrets to generate the dynamic services section.
 	// Inject the agent name so the skill can reference it deterministically.
 	if name, dir, ok := agentSkillDir(c.Args[0]); ok {
-		secrets, _ := client.ListSecrets(newContext())
+		secrets, _ := client.ListSecrets(newContext(), resolveProject(c.Project))
 		skillContent := buildSkillContent(secrets)
 		maybeInstallGatewaySkill(out, name, dir, skillContent)
 		env = append(env, "ONECLI_AGENT_NAME="+name)

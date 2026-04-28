@@ -12,6 +12,7 @@ const (
 	envVar     = "ONECLI_ENV"
 	apiKeyVar  = "ONECLI_API_KEY"
 	apiHostVar = "ONECLI_API_HOST"
+	projectVar = "ONECLI_PROJECT"
 
 	envProduction = "production"
 	envDev        = "dev"
@@ -64,6 +65,19 @@ func APIKeyFromEnv() string {
 	return os.Getenv(apiKeyVar)
 }
 
+// Project returns the configured project slug, or empty string if not set.
+// Precedence: ONECLI_PROJECT env var > config file > empty.
+func Project() string {
+	if v := os.Getenv(projectVar); v != "" {
+		return v
+	}
+	cfg, err := readConfig()
+	if err != nil {
+		return ""
+	}
+	return cfg["project"]
+}
+
 // KeychainService returns the keychain service name for API key storage.
 func KeychainService() string {
 	if IsDev() {
@@ -100,11 +114,13 @@ var ErrInvalidConfigValue = errors.New("invalid config value")
 // nil means any non-empty string is valid.
 var validKeys = map[string]func(string) error{
 	"api-host": validateURL,
+	"project":  nil,
 }
 
 // configDefaults maps each config key to its default value.
 var configDefaults = map[string]string{
 	"api-host": defaultAPIHost,
+	"project":  "",
 }
 
 func validateURL(u string) error {

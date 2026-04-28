@@ -48,9 +48,11 @@ type UpdateRuleInput struct {
 }
 
 // ListRules returns all policy rules for the authenticated user.
-func (c *Client) ListRules(ctx context.Context) ([]Rule, error) {
+// If projectID is non-empty, results are scoped to that project.
+func (c *Client) ListRules(ctx context.Context, projectID string) ([]Rule, error) {
+	path := withProjectQuery("/api/rules", projectID)
 	var rules []Rule
-	if err := c.do(ctx, http.MethodGet, "/api/rules", nil, &rules); err != nil {
+	if err := c.do(ctx, http.MethodGet, path, nil, &rules); err != nil {
 		return nil, fmt.Errorf("listing rules: %w", err)
 	}
 	return rules, nil
@@ -66,9 +68,11 @@ func (c *Client) GetRule(ctx context.Context, id string) (*Rule, error) {
 }
 
 // CreateRule creates a new policy rule.
-func (c *Client) CreateRule(ctx context.Context, input CreateRuleInput) (*Rule, error) {
+// If projectID is non-empty, the rule is created in that project.
+func (c *Client) CreateRule(ctx context.Context, input CreateRuleInput, projectID string) (*Rule, error) {
+	path := withProjectQuery("/api/rules", projectID)
 	var rule Rule
-	if err := c.do(ctx, http.MethodPost, "/api/rules", input, &rule); err != nil {
+	if err := c.do(ctx, http.MethodPost, path, input, &rule); err != nil {
 		return nil, fmt.Errorf("creating rule: %w", err)
 	}
 	return &rule, nil
