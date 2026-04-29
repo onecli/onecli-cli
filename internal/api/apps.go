@@ -6,16 +6,24 @@ import (
 	"net/http"
 )
 
+// CredentialStub is a stub file that provisioners write so MCP servers
+// can boot. The gateway replaces sentinel values at request time.
+type CredentialStub struct {
+	Path    string         `json:"path"`
+	Content map[string]any `json:"content"`
+}
+
 // App represents an app from the /api/apps endpoints.
 type App struct {
-	ID             string         `json:"id"`
-	Name           string         `json:"name"`
-	Available      bool           `json:"available"`
-	ConnectionType string         `json:"connectionType"`
-	Configurable   bool           `json:"configurable"`
-	Config         *AppConfig     `json:"config"`
-	Connection     *AppConnection `json:"connection"`
-	Hint           string         `json:"hint,omitempty"`
+	ID              string           `json:"id"`
+	Name            string           `json:"name"`
+	Available       bool             `json:"available"`
+	ConnectionType  string           `json:"connectionType"`
+	Configurable    bool             `json:"configurable"`
+	Config          *AppConfig       `json:"config"`
+	Connection      *AppConnection   `json:"connection"`
+	CredentialStubs []CredentialStub `json:"credentialStubs,omitempty"`
+	Hint            string           `json:"hint,omitempty"`
 }
 
 // AppConfig is the BYOC credential configuration status.

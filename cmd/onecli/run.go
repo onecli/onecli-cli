@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	_ "embed"
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"os"
@@ -94,6 +95,9 @@ func (c *RunCmd) Run(out *output.Writer) error {
 			caPath = ""
 		}
 	}
+
+	// Write credential stubs for connected apps (non-fatal on failure).
+	writeCredentialStubs(client, out)
 
 	// Build child environment.
 	env := buildChildEnv(os.Environ(), cfg.Env, caPath)
@@ -320,6 +324,77 @@ func buildSkillContent(secrets []api.Secret) string {
 	sb.WriteString("returns an error with a connect URL you can present to the user.\n")
 
 	return strings.Replace(gatewaySkill, "{{SERVICES_SECTION}}", sb.String(), 1)
+}
+
+// credentialSentinel is the placeholder value used in credential stub files.
+// Files containing this value are safe to overwrite; files without it contain
+// real credentials and must not be touched.
+const credentialSentinel = "onecli-managed"
+
+// writeCredentialStubs fetches connected apps and writes credential stub files
+// for apps that define them. Existing files with real credentials (no sentinel)
+// are never overwritten.
+func writeCredentialStubs(client *api.Client, out *output.Writer) {
+	apps, err := client.ListApps(newContext())
+	if err != nil {
+		return
+	}
+	for _, app := range apps {
+		if app.Connection == nil || app.Connection.Status != "connected" {
+			continue
+		}
+		for _, stub := range app.CredentialStubs {
+			if stub.Path == "" {
+				continue
+			}
+			safeWriteStub(stub, out)
+		}
+	}
+}
+
+// safeWriteStub writes a single credential stub file. It refuses to overwrite
+// files that don't contain the "onecli-managed" sentinel, and skips the write
+// when the on-disk content already matches.
+func safeWriteStub(stub api.CredentialStub, out *output.Writer) {
+	path := expandTilde(stub.Path)
+
+	content, err := json.MarshalIndent(stub.Content, "", "  ")
+	if err != nil {
+		return
+	}
+	content = append(content, '\n')
+
+	existing, readErr := os.ReadFile(path)
+	if readErr == nil {
+		if bytes.Equal(existing, content) {
+			return
+		}
+		if !bytes.Contains(existing, []byte(credentialSentinel)) {
+			out.Stderr(fmt.Sprintf("onecli: skipping %s (real credentials detected)", stub.Path))
+			return
+		}
+	}
+
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		out.Stderr(fmt.Sprintf("onecli: warning: could not create directory for %s: %v", stub.Path, err))
+		return
+	}
+	if err := os.WriteFile(path, content, 0o600); err != nil {
+		out.Stderr(fmt.Sprintf("onecli: warning: could not write credential stub %s: %v", stub.Path, err))
+		return
+	}
+}
+
+// expandTilde replaces a leading ~ with the user's home directory.
+func expandTilde(path string) string {
+	if !strings.HasPrefix(path, "~/") {
+		return path
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return path
+	}
+	return filepath.Join(home, path[2:])
 }
 
 // maybeInstallGatewaySkill installs the OneCLI gateway skill file if it is
