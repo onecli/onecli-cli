@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.1](https://github.com/onecli/onecli-cli/compare/v1.5.0...v1.5.1) (2026-05-01)
+
+
+### Bug Fixes
+
+* resolve Electron proxy auth and improve gateway skill UX ([#36](https://github.com/onecli/onecli-cli/issues/36)) ([4a69e32](https://github.com/onecli/onecli-cli/commit/4a69e32a5f0be063d9da5fc520148e6209abb355))
+
 ## [1.5.0](https://github.com/onecli/onecli-cli/compare/v1.4.1...v1.5.0) (2026-04-28)
 
 
