@@ -3,11 +3,14 @@ package main
 import (
 	"bytes"
 	_ "embed"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 
@@ -101,16 +104,23 @@ func (c *RunCmd) Run(out *output.Writer) error {
 	// Install skill for known agents (silently updates stale files).
 	// Fetch configured secrets to generate the dynamic services section.
 	// Inject the agent name so the skill can reference it deterministically.
-	if name, dir, ok := agentSkillDir(c.Args[0]); ok {
+	if name, dir, cfgDir, ok := agentSkillDir(c.Args[0]); ok {
 		project, err := resolveProject(c.Project)
 		if err != nil {
 			return err
 		}
 		secrets, _ := client.ListSecrets(newContext(), project)
-		skillContent := buildSkillContent(secrets)
+		skillContent := buildSkillContent(name, config.APIHost(), secrets)
 		maybeInstallGatewaySkill(out, name, dir, skillContent)
 		env = append(env, "ONECLI_AGENT_NAME="+name)
 		env = append(env, "ONECLI_URL="+config.APIHost())
+
+		// Electron-based agents (e.g. Cursor) ignore embedded user:pass in
+		// HTTPS_PROXY and show a native auth dialog. Inject proxy credentials
+		// into the app's VS Code-style settings.json instead.
+		if cfgDir != "" {
+			env = injectElectronProxySettings(out, env, cfgDir, caPath)
+		}
 	}
 
 	// Exec — replaces this process so the agent gets direct terminal control.
@@ -270,32 +280,33 @@ var supportedAgents = []struct {
 	bases     []string
 	agentName string
 	baseDir   string
+	configDir string // VS Code-style config dir name; non-empty enables proxy settings injection.
 }{
-	{[]string{"claude"}, "Claude Code", ".claude"},
-	{[]string{"cursor", "agent"}, "Cursor", ".cursor"},
-	{[]string{"codex"}, "Codex", ".agents"},
-	{[]string{"hermes"}, "Hermes", ".hermes"},
-	{[]string{"opencode"}, "OpenCode", ".opencode"},
+	{[]string{"claude"}, "Claude Code", ".claude", ""},
+	{[]string{"cursor", "agent"}, "Cursor", ".cursor", "Cursor"},
+	{[]string{"codex"}, "Codex", ".agents", ""},
+	{[]string{"hermes"}, "Hermes", ".hermes", ""},
+	{[]string{"opencode"}, "OpenCode", ".opencode", ""},
 }
 
 // agentSkillDir returns the display name and skills base directory for a known
 // agent command, or ok=false if the command is not recognized.
-func agentSkillDir(cmd string) (agentName, baseDir string, ok bool) {
+func agentSkillDir(cmd string) (agentName, baseDir, configDir string, ok bool) {
 	base := filepath.Base(cmd)
 	for _, a := range supportedAgents {
 		for _, b := range a.bases {
 			if base == b {
-				return a.agentName, a.baseDir, true
+				return a.agentName, a.baseDir, a.configDir, true
 			}
 		}
 	}
-	return "", "", false
+	return "", "", "", false
 }
 
 // buildSkillContent generates the full skill file by replacing the
 // {{SERVICES_SECTION}} placeholder in the embedded template with a
 // dynamic section listing configured secrets.
-func buildSkillContent(secrets []api.Secret) string {
+func buildSkillContent(agentName string, apiHost string, secrets []api.Secret) string {
 	var sb strings.Builder
 	sb.WriteString("## Your Gateway Services\n\n")
 
@@ -319,7 +330,10 @@ func buildSkillContent(secrets []api.Secret) string {
 	sb.WriteString("the gateway injects credentials if the app is connected. If not, it\n")
 	sb.WriteString("returns an error with a connect URL you can present to the user.\n")
 
-	return strings.Replace(gatewaySkill, "{{SERVICES_SECTION}}", sb.String(), 1)
+	content := strings.Replace(gatewaySkill, "{{SERVICES_SECTION}}", sb.String(), 1)
+	content = strings.ReplaceAll(content, "{{AGENT_NAME_ENCODED}}", url.QueryEscape(agentName))
+	content = strings.ReplaceAll(content, "{{ONECLI_URL}}", apiHost)
+	return content
 }
 
 // maybeInstallGatewaySkill installs the OneCLI gateway skill file if it is
@@ -346,4 +360,144 @@ func maybeInstallGatewaySkill(out *output.Writer, agentName, baseDir, content st
 		return
 	}
 	out.Stderr(fmt.Sprintf("onecli: installed gateway skill for %s.", agentName))
+}
+
+// injectElectronProxySettings writes http.proxy and http.proxyAuthorization
+// into a VS Code-style settings.json so Electron-based editors authenticate
+// with the gateway proxy without Chromium's native auth dialog. Returns the
+// env with credentials stripped from proxy URLs.
+func injectElectronProxySettings(out *output.Writer, env []string, configDir string, caPath string) []string {
+	proxyURL := findProxyURL(env)
+	if proxyURL == "" {
+		return env
+	}
+	u, err := url.Parse(proxyURL)
+	if err != nil || u.User == nil {
+		return env
+	}
+	password, hasPass := u.User.Password()
+	if !hasPass {
+		return env
+	}
+
+	clean := *u
+	clean.User = nil
+	authValue := "Basic " + base64.StdEncoding.EncodeToString(
+		[]byte(u.User.Username()+":"+password),
+	)
+
+	// Terminal env gets the full proxy URL (with credentials) since CLI
+	// tools like curl and python handle embedded auth fine. Also inject
+	// CA trust paths so TLS verification works through the proxy.
+	terminalEnv := map[string]string{
+		"HTTPS_PROXY": proxyURL,
+		"HTTP_PROXY":  proxyURL,
+	}
+	if caPath != "" {
+		for _, k := range caTrustKeys {
+			terminalEnv[k] = caPath
+		}
+	}
+
+	settingsPath := vscodeSettingsPath(configDir)
+	if settingsPath == "" {
+		return env
+	}
+	if err := mergeVSCodeProxySettings(settingsPath, clean.String(), authValue, terminalEnv); err != nil {
+		out.Stderr(fmt.Sprintf("onecli: warning: could not inject proxy settings: %v", err))
+		return env
+	}
+	return stripProxyCredentials(env)
+}
+
+func findProxyURL(env []string) string {
+	for _, key := range []string{"HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy"} {
+		prefix := key + "="
+		for _, kv := range env {
+			if strings.HasPrefix(kv, prefix) {
+				return kv[len(prefix):]
+			}
+		}
+	}
+	return ""
+}
+
+func vscodeSettingsPath(configDir string) string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	switch runtime.GOOS {
+	case "darwin":
+		return filepath.Join(home, "Library", "Application Support", configDir, "User", "settings.json")
+	case "linux":
+		return filepath.Join(home, ".config", configDir, "User", "settings.json")
+	case "windows":
+		return filepath.Join(os.Getenv("APPDATA"), configDir, "User", "settings.json")
+	default:
+		return ""
+	}
+}
+
+// Note: re-serialization via json.MarshalIndent sorts keys alphabetically.
+func mergeVSCodeProxySettings(path, proxyURL, authHeader string, terminalEnv map[string]string) error {
+	settings := make(map[string]any)
+	data, readErr := os.ReadFile(path)
+	if readErr == nil && len(data) > 0 {
+		if err := json.Unmarshal(data, &settings); err != nil {
+			return fmt.Errorf("settings contains comments or invalid JSON; cannot merge proxy config")
+		}
+	}
+	settings["http.proxy"] = proxyURL
+	settings["http.proxyAuthorization"] = authHeader
+
+	if len(terminalEnv) > 0 {
+		termKey := "terminal.integrated.env.osx"
+		switch runtime.GOOS {
+		case "linux":
+			termKey = "terminal.integrated.env.linux"
+		case "windows":
+			termKey = "terminal.integrated.env.windows"
+		}
+		existing, _ := settings[termKey].(map[string]any)
+		if existing == nil {
+			existing = make(map[string]any)
+		}
+		for k, v := range terminalEnv {
+			existing[k] = v
+		}
+		settings[termKey] = existing
+	}
+
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+		return fmt.Errorf("creating settings dir: %w", err)
+	}
+	out, err := json.MarshalIndent(settings, "", "    ")
+	if err != nil {
+		return fmt.Errorf("marshaling settings: %w", err)
+	}
+	return os.WriteFile(path, append(out, '\n'), 0o600)
+}
+
+func stripProxyCredentials(env []string) []string {
+	proxyKeys := map[string]bool{
+		"HTTPS_PROXY": true, "HTTP_PROXY": true,
+		"https_proxy": true, "http_proxy": true,
+	}
+	result := make([]string, 0, len(env))
+	for _, kv := range env {
+		i := strings.IndexByte(kv, '=')
+		if i < 0 || !proxyKeys[kv[:i]] {
+			result = append(result, kv)
+			continue
+		}
+		u, err := url.Parse(kv[i+1:])
+		if err != nil || u.User == nil {
+			result = append(result, kv)
+			continue
+		}
+		u.User = nil
+		result = append(result, kv[:i+1]+u.String())
+	}
+	return result
 }

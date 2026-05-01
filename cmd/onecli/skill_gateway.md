@@ -48,30 +48,45 @@ to set any auth headers.
 
 If you get a 401, 403, or a gateway error (e.g. `app_not_connected`):
 
-**For OAuth apps (Gmail, GitHub, Google Calendar, etc.):**
+### Step 1 — MANDATORY: Show the user a connect link
 
-1. Get the `connect_url` from the error response
-2. Always append `&source=agent&agent_name=` + URL-encoded `$ONECLI_AGENT_NAME` to the URL.
-   Example: `http://localhost:10254/connections?connect=github&source=agent&agent_name=Claude%20Code`
-3. Present the full URL to the user
-4. **Immediately start polling.** Do NOT wait for the user to say "try now".
-   Poll by checking the `connection` field in the JSON response:
+You MUST show the user a clickable link BEFORE doing anything else.
+Do NOT skip this step. Do NOT jump to polling. The user cannot connect
+without seeing this link.
 
+**For OAuth apps:** extract the `connect_url` from the error response and
+append `&source=agent&agent_name={{AGENT_NAME_ENCODED}}`. Show it like:
+
+> To connect [service], open this link:
+> http://localhost:10254/connections?connect=[provider]&source=agent&agent_name={{AGENT_NAME_ENCODED}}
+
+**For API key services:** construct a pre-filled dashboard link:
+
+> To add your [service] API key, open this link:
+> {{ONECLI_URL}}/secrets/new?name=[service]&hostPattern=[api.host.com]&source=agent&agent_name={{AGENT_NAME_ENCODED}}
+
+Do NOT show `onecli secrets create` CLI commands. Always use the dashboard link.
+
+### Step 2 — ONLY after showing the link: Start polling
+
+After the link is visible to the user, start polling in the background.
+Do NOT wait for the user to say "try now" or "done".
+
+For OAuth apps:
 ```bash
-# Check if connected (returns "connected" or "not_connected")
-onecli apps get --provider gmail 2>/dev/null | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('connection',{}).get('status','none') if d.get('connection') else 'not_connected')"
+onecli apps get --provider [provider] 2>/dev/null | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('connection',{}).get('status','none') if d.get('connection') else 'not_connected')"
 ```
 
-5. When the output shows `connected`, automatically retry your original
-   request and continue the task
-6. If still not connected after 2 minutes, ask the user if they need help
+For API key services:
+```bash
+onecli secrets list --fields hostPattern --quiet hostPattern
+```
 
-**For API key services (Stripe, custom APIs, etc.):**
+### Step 3 — Auto-retry
 
-Tell the user to add the secret:
-   `onecli secrets create --name 'Stripe' --type generic --value 'sk_...' --host-pattern 'api.stripe.com'`
-Then poll `onecli secrets list --fields hostPattern --quiet hostPattern` until
-the host pattern appears.
+When the connection or secret appears, automatically retry your original
+request and continue the task. If still not connected after 2 minutes,
+ask the user if they need help.
 
 ## Rules
 
