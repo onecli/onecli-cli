@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.3](https://github.com/onecli/onecli-cli/compare/v1.5.2...v1.5.3) (2026-05-02)
+
+
+### Bug Fixes
+
+* use ONECLI_URL template var for OAuth connect URL in gateway skill ([#40](https://github.com/onecli/onecli-cli/issues/40)) ([98e66d2](https://github.com/onecli/onecli-cli/commit/98e66d214aab3b531808bdf412bb61988d5bcc45))
+
 ## [1.5.2](https://github.com/onecli/onecli-cli/compare/v1.5.1...v1.5.2) (2026-05-02)
 
 
