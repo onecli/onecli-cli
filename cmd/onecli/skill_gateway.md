@@ -54,11 +54,10 @@ You MUST show the user a clickable link BEFORE doing anything else.
 Do NOT skip this step. Do NOT jump to polling. The user cannot connect
 without seeing this link.
 
-**For OAuth apps:** extract the `connect_url` from the error response and
-append `&source=agent&agent_name={{AGENT_NAME_ENCODED}}`. Show it like:
+**For OAuth apps:** use the `connect_url` from the error response directly:
 
 > To connect [service], open this link:
-> http://localhost:10254/connections?connect=[provider]&source=agent&agent_name={{AGENT_NAME_ENCODED}}
+> [connect_url from the error response]
 
 **For API key services:** construct a pre-filled dashboard link:
 
