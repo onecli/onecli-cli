@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.2](https://github.com/onecli/onecli-cli/compare/v1.5.1...v1.5.2) (2026-05-02)
+
+
+### Bug Fixes
+
+* strip ANTHROPIC_API_KEY to avoid Claude Code prompt ([#38](https://github.com/onecli/onecli-cli/issues/38)) ([9d977e8](https://github.com/onecli/onecli-cli/commit/9d977e8e49da631db110033647d773c45355a57a))
+
 ## [1.5.1](https://github.com/onecli/onecli-cli/compare/v1.5.0...v1.5.1) (2026-05-01)
 
 
