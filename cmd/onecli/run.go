@@ -70,6 +70,10 @@ func (c *RunCmd) Run(out *output.Writer) error {
 	}
 	rewriteProxyEnvHosts(cfg.Env, gatewayHost)
 
+	// The gateway proxy injects the API key at the HTTP level (x-api-key header).
+	// Keeping it in the env triggers a first-run confirmation prompt in Claude Code.
+	delete(cfg.Env, "ANTHROPIC_API_KEY")
+
 	// Dry-run: print resolved config without side effects (no CA write,
 	// no skill install, no exec).
 	if c.DryRun {
