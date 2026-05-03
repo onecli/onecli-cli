@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.0](https://github.com/onecli/onecli-cli/compare/v1.5.3...v1.6.0) (2026-05-03)
+
+
+### Features
+
+* split Secrets tab into Custom and LLMs tabs on Connections page ([#42](https://github.com/onecli/onecli-cli/issues/42)) ([149f451](https://github.com/onecli/onecli-cli/commit/149f451a11b2b667c25203844a6bc40020e80c19))
+
 ## [1.5.3](https://github.com/onecli/onecli-cli/compare/v1.5.2...v1.5.3) (2026-05-02)
 
 
