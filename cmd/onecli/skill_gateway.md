@@ -62,7 +62,7 @@ without seeing this link.
 **For API key services:** construct a pre-filled dashboard link:
 
 > To add your [service] API key, open this link:
-> {{ONECLI_URL}}/secrets/new?name=[service]&hostPattern=[api.host.com]&source=agent&agent_name={{AGENT_NAME_ENCODED}}
+> {{ONECLI_URL}}/connections/custom?create=generic&name=[service]&host=[api.host.com]&source=agent&agent_name={{AGENT_NAME_ENCODED}}
 
 Do NOT show `onecli secrets create` CLI commands. Always use the dashboard link.
 
