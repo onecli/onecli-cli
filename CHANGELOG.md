@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.0](https://github.com/onecli/onecli-cli/compare/v1.6.1...v1.7.0) (2026-05-07)
+
+
+### Features
+
+* unified gateway skill with API fetch ([#47](https://github.com/onecli/onecli-cli/issues/47)) ([e8e272d](https://github.com/onecli/onecli-cli/commit/e8e272ddf3ec1f89373fa7e2f5ad483947e2b50c))
+
 ## [1.6.1](https://github.com/onecli/onecli-cli/compare/v1.6.0...v1.6.1) (2026-05-07)
 
 
