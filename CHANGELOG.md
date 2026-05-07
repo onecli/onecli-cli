@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.1](https://github.com/onecli/onecli-cli/compare/v1.6.0...v1.6.1) (2026-05-07)
+
+
+### Bug Fixes
+
+* include system CAs in gateway CA bundle ([#45](https://github.com/onecli/onecli-cli/issues/45)) ([5ec9556](https://github.com/onecli/onecli-cli/commit/5ec95566d8ca5f45e945bbab8a57e1ddc43cf0c1))
+
 ## [1.6.0](https://github.com/onecli/onecli-cli/compare/v1.5.3...v1.6.0) (2026-05-03)
 
 
