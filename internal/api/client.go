@@ -3,11 +3,14 @@ package api
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"time"
 )
 
@@ -21,12 +24,31 @@ type Client struct {
 // New creates an API client.
 func New(baseURL, apiKey string) *Client {
 	return &Client{
-		baseURL: baseURL,
-		apiKey:  apiKey,
-		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
-		},
+		baseURL:    baseURL,
+		apiKey:     apiKey,
+		httpClient: buildHTTPClient(),
 	}
+}
+
+func buildHTTPClient() *http.Client {
+	client := &http.Client{Timeout: 30 * time.Second}
+	f := os.Getenv("SSL_CERT_FILE")
+	if f == "" {
+		return client
+	}
+	data, err := os.ReadFile(f)
+	if err != nil {
+		return client
+	}
+	pool, err := x509.SystemCertPool()
+	if err != nil {
+		pool = x509.NewCertPool()
+	}
+	pool.AppendCertsFromPEM(data)
+	client.Transport = &http.Transport{
+		TLSClientConfig: &tls.Config{RootCAs: pool},
+	}
+	return client
 }
 
 // withProjectQuery appends a projectId query param to path when projectID is non-empty.
