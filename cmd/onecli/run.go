@@ -14,14 +14,13 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/onecli/onecli-cli/internal/api"
 	"github.com/onecli/onecli-cli/internal/config"
 	"github.com/onecli/onecli-cli/pkg/output"
 	"github.com/onecli/onecli-cli/pkg/validate"
 )
 
-//go:embed skill_gateway.md
-var gatewaySkill string
+//go:embed skill_gateway_fallback.md
+var gatewaySkillFallback string
 
 // RunCmd is `onecli run -- <command> [args...]`.
 type RunCmd struct {
@@ -106,18 +105,13 @@ func (c *RunCmd) Run(out *output.Writer) error {
 	env := buildChildEnv(os.Environ(), cfg.Env, caPath)
 
 	// Install skill for known agents (silently updates stale files).
-	// Fetch configured secrets to generate the dynamic services section.
-	// Inject the agent name so the skill can reference it deterministically.
+	// Fetch the latest skill from the API; fall back to the embedded copy.
 	if name, dir, cfgDir, ok := agentSkillDir(c.Args[0]); ok {
-		project, err := resolveProject(c.Project)
-		if err != nil {
-			return err
+		skillContent := gatewaySkillFallback
+		if fetched, err := client.GetGatewaySkill(newContext()); err == nil && fetched != "" {
+			skillContent = fetched
 		}
-		secrets, _ := client.ListSecrets(newContext(), project)
-		skillContent := buildSkillContent(name, config.APIHost(), secrets)
 		maybeInstallGatewaySkill(out, name, dir, skillContent)
-		env = append(env, "ONECLI_AGENT_NAME="+name)
-		env = append(env, "ONECLI_URL="+config.APIHost())
 
 		// Electron-based agents (e.g. Cursor) ignore embedded user:pass in
 		// HTTPS_PROXY and show a native auth dialog. Inject proxy credentials
@@ -335,39 +329,6 @@ func agentSkillDir(cmd string) (agentName, baseDir, configDir string, ok bool) {
 		}
 	}
 	return "", "", "", false
-}
-
-// buildSkillContent generates the full skill file by replacing the
-// {{SERVICES_SECTION}} placeholder in the embedded template with a
-// dynamic section listing configured secrets.
-func buildSkillContent(agentName string, apiHost string, secrets []api.Secret) string {
-	var sb strings.Builder
-	sb.WriteString("## Your Gateway Services\n\n")
-
-	// List API key secrets.
-	var secretLines []string
-	for _, s := range secrets {
-		if s.HostPattern != "" {
-			secretLines = append(secretLines, fmt.Sprintf("- %s (%s)", s.HostPattern, s.Name))
-		}
-	}
-	if len(secretLines) > 0 {
-		sb.WriteString("API key secrets configured for:\n")
-		for _, line := range secretLines {
-			sb.WriteString(line + "\n")
-		}
-		sb.WriteString("\n")
-	}
-
-	sb.WriteString("OAuth apps (Gmail, GitHub, Google Calendar, Google Drive, etc.) are\n")
-	sb.WriteString("also available through the gateway. Just make the request directly;\n")
-	sb.WriteString("the gateway injects credentials if the app is connected. If not, it\n")
-	sb.WriteString("returns an error with a connect URL you can present to the user.\n")
-
-	content := strings.Replace(gatewaySkill, "{{SERVICES_SECTION}}", sb.String(), 1)
-	content = strings.ReplaceAll(content, "{{AGENT_NAME_ENCODED}}", url.QueryEscape(agentName))
-	content = strings.ReplaceAll(content, "{{ONECLI_URL}}", apiHost)
-	return content
 }
 
 // maybeInstallGatewaySkill installs the OneCLI gateway skill file if it is
