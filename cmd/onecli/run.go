@@ -135,25 +135,55 @@ func (c *RunCmd) Run(out *output.Writer) error {
 	return nil
 }
 
-// writeGatewayCACert writes the gateway CA PEM to ~/.onecli/gateway-ca.pem.
-// Returns the path on success. Skips the write if on-disk content already matches.
-func writeGatewayCACert(pem string) (string, error) {
+// writeGatewayCACert writes a combined CA bundle (system CAs + gateway CA)
+// to ~/.onecli/ca-bundle.pem. Env vars like SSL_CERT_FILE REPLACE the
+// default trust store, so the bundle must include system root certificates
+// alongside the gateway CA.
+func writeGatewayCACert(gatewayPEM string) (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("resolving home dir: %w", err)
 	}
-	caPath := filepath.Join(home, ".onecli", "gateway-ca.pem")
+	caPath := filepath.Join(home, ".onecli", "ca-bundle.pem")
 	if err := os.MkdirAll(filepath.Dir(caPath), 0o700); err != nil {
 		return "", fmt.Errorf("creating CA dir: %w", err)
 	}
+
+	var buf bytes.Buffer
+	if systemCAs, err := readSystemCAs(); err == nil {
+		buf.Write(systemCAs)
+		if len(systemCAs) > 0 && systemCAs[len(systemCAs)-1] != '\n' {
+			buf.WriteByte('\n')
+		}
+	}
+	buf.WriteString(gatewayPEM)
+
+	combined := buf.Bytes()
 	existing, err := os.ReadFile(caPath)
-	if err == nil && bytes.Equal(existing, []byte(pem)) {
+	if err == nil && bytes.Equal(existing, combined) {
 		return caPath, nil
 	}
-	if err := os.WriteFile(caPath, []byte(pem), 0o600); err != nil {
-		return "", fmt.Errorf("writing CA cert: %w", err)
+	if err := os.WriteFile(caPath, combined, 0o600); err != nil {
+		return "", fmt.Errorf("writing CA bundle: %w", err)
 	}
 	return caPath, nil
+}
+
+var systemCAPaths = []string{
+	"/etc/ssl/cert.pem",                  // macOS
+	"/etc/ssl/certs/ca-certificates.crt", // Debian/Ubuntu
+	"/etc/pki/tls/certs/ca-bundle.crt",   // RHEL/Fedora/CentOS
+	"/etc/ssl/ca-bundle.pem",             // SUSE
+}
+
+func readSystemCAs() ([]byte, error) {
+	for _, p := range systemCAPaths {
+		data, err := os.ReadFile(p)
+		if err == nil && len(data) > 0 {
+			return data, nil
+		}
+	}
+	return nil, fmt.Errorf("no system CA bundle found")
 }
 
 // caTrustKeys are env vars we inject locally for CA trust. These aren't in
