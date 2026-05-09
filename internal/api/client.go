@@ -144,7 +144,7 @@ func (c *Client) do(ctx context.Context, method, path string, body any, result a
 
 	if result != nil {
 		if err := json.Unmarshal(respBody, result); err != nil {
-			return fmt.Errorf("decoding response: %w", err)
+			return fmt.Errorf("unexpected response from server (status %d) — expected JSON", resp.StatusCode)
 		}
 	}
 	return nil

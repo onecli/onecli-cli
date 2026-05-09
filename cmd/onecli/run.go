@@ -47,7 +47,7 @@ func (c *RunCmd) Run(out *output.Writer) error {
 	// Resolve the binary path early — fail fast before the API round-trip.
 	binary, err := exec.LookPath(c.Args[0])
 	if err != nil {
-		return fmt.Errorf("command not found %s: %w", c.Args[0], err)
+		return fmt.Errorf("command not found: %s — is it installed and in your PATH?", c.Args[0])
 	}
 
 	// Fetch gateway configuration from the API.
@@ -124,7 +124,7 @@ func (c *RunCmd) Run(out *output.Writer) error {
 	// Exec — replaces this process so the agent gets direct terminal control.
 	out.Stderr(fmt.Sprintf("onecli: gateway connected. Starting %s...", c.Args[0]))
 	if err := syscall.Exec(binary, c.Args, env); err != nil {
-		return fmt.Errorf("exec %s: %w", binary, err)
+		return fmt.Errorf("could not start %s: %w", c.Args[0], err)
 	}
 	return nil
 }

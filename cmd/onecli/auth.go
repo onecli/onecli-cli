@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 
@@ -60,7 +61,11 @@ func (c *AuthLoginCmd) Run(out *output.Writer) error {
 	client := api.New(config.APIHost(), apiKey)
 	user, err := client.GetUser(newContext())
 	if err != nil {
-		return errors.New("invalid API key: authentication failed")
+		var apiErr *api.APIError
+		if errors.As(err, &apiErr) && apiErr.StatusCode == 401 {
+			return errors.New("invalid API key: the server rejected this key")
+		}
+		return fmt.Errorf("could not verify API key: %w", err)
 	}
 
 	// Store the key.
