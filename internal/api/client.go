@@ -6,11 +6,13 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"os"
+	"syscall"
 	"time"
 )
 
@@ -76,6 +78,21 @@ func (e *APIError) Error() string {
 	return e.Message
 }
 
+// networkError translates raw Go network errors into user-friendly messages.
+func (c *Client) networkError(err error) error {
+	host := c.baseURL
+	if u, e := url.Parse(c.baseURL); e == nil && u.Host != "" {
+		host = u.Host
+	}
+	if errors.Is(err, syscall.ECONNREFUSED) {
+		return fmt.Errorf("could not connect to gateway at %s — is the OneCLI gateway running?", host)
+	}
+	if os.IsTimeout(err) {
+		return fmt.Errorf("request to gateway at %s timed out", host)
+	}
+	return fmt.Errorf("could not reach gateway at %s: %w", host, err)
+}
+
 // do executes an HTTP request and decodes the JSON response.
 // For 204 responses, result should be nil.
 func (c *Client) do(ctx context.Context, method, path string, body any, result any) error {
@@ -102,7 +119,7 @@ func (c *Client) do(ctx context.Context, method, path string, body any, result a
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("executing request: %w", err)
+		return c.networkError(err)
 	}
 	defer resp.Body.Close()
 
