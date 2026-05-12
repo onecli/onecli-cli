@@ -73,6 +73,8 @@ func (c *RunCmd) Run(out *output.Writer) error {
 	// Keeping it in the env triggers a first-run confirmation prompt in Claude Code.
 	delete(cfg.Env, "ANTHROPIC_API_KEY")
 
+	cfg.Env["ONECLI_GATEWAY"] = "1"
+
 	// Dry-run: print resolved config without side effects (no CA write,
 	// no skill install, no exec).
 	if c.DryRun {
@@ -112,6 +114,10 @@ func (c *RunCmd) Run(out *output.Writer) error {
 			skillContent = fetched
 		}
 		maybeInstallGatewaySkill(out, name, dir, skillContent)
+
+		if dir == ".claude" {
+			maybeAppendGatewayHint(out)
+		}
 
 		// Electron-based agents (e.g. Cursor) ignore embedded user:pass in
 		// HTTPS_PROXY and show a native auth dialog. Inject proxy credentials
@@ -360,6 +366,51 @@ func maybeInstallGatewaySkill(out *output.Writer, agentName, baseDir, content st
 		return
 	}
 	out.Stderr(fmt.Sprintf("onecli: installed gateway skill for %s.", agentName))
+}
+
+// gatewayHintMarker is the heading used to detect whether the gateway hint
+// section has already been appended to ~/.claude/CLAUDE.md.
+const gatewayHintMarker = "## OneCLI Gateway"
+
+const gatewayHintContent = `
+## OneCLI Gateway
+
+If ` + "`ONECLI_GATEWAY`" + ` is set in your environment, the OneCLI gateway proxy is
+active. Always invoke the ` + "`onecli-gateway`" + ` skill before trying other approaches
+(installing CLIs, searching for MCP servers, or using browser automation) to
+interact with external APIs.
+`
+
+// maybeAppendGatewayHint ensures ~/.claude/CLAUDE.md contains a short section
+// reminding Claude Code that the gateway is available. This surfaces the hint
+// in the system context so the agent loads the skill proactively rather than
+// trying to install CLIs or search for MCP servers first.
+func maybeAppendGatewayHint(out *output.Writer) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return
+	}
+	path := filepath.Join(home, ".claude", "CLAUDE.md")
+
+	existing, err := os.ReadFile(path)
+	if err != nil {
+		// File doesn't exist — create it with just the hint.
+		if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+			return
+		}
+		if err := os.WriteFile(path, []byte(strings.TrimLeft(gatewayHintContent, "\n")), 0o600); err != nil {
+			out.Stderr(fmt.Sprintf("onecli: warning: could not create CLAUDE.md: %v", err))
+		}
+		return
+	}
+
+	if strings.Contains(string(existing), gatewayHintMarker) {
+		return
+	}
+
+	if err := os.WriteFile(path, append(existing, []byte(gatewayHintContent)...), 0o600); err != nil {
+		out.Stderr(fmt.Sprintf("onecli: warning: could not update CLAUDE.md: %v", err))
+	}
 }
 
 // injectElectronProxySettings writes http.proxy and http.proxyAuthorization
