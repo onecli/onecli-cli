@@ -121,6 +121,11 @@ func (c *RunCmd) Run(out *output.Writer) error {
 		}
 	}
 
+	// Surface any warnings from the server (e.g. missing credentials).
+	for _, w := range cfg.Warnings {
+		out.Stderr(fmt.Sprintf("onecli: warning: %s", w))
+	}
+
 	// Exec — replaces this process so the agent gets direct terminal control.
 	out.Stderr(fmt.Sprintf("onecli: gateway connected. Starting %s...", c.Args[0]))
 	if err := syscall.Exec(binary, c.Args, env); err != nil {

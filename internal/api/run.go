@@ -13,6 +13,7 @@ type ContainerConfig struct {
 	Env                        map[string]string `json:"env"`
 	CACertificate              string            `json:"caCertificate"`
 	CACertificateContainerPath string            `json:"caCertificateContainerPath"`
+	Warnings                   []string          `json:"warnings,omitempty"`
 }
 
 // GetContainerConfig returns gateway configuration for a local agent process.
