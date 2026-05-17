@@ -22,6 +22,9 @@ import (
 //go:embed skill_gateway_fallback.md
 var gatewaySkillFallback string
 
+//go:embed hook_gateway_detect.sh
+var gatewayDetectHook string
+
 // RunCmd is `onecli run -- <command> [args...]`.
 type RunCmd struct {
 	Project string   `optional:"" short:"p" help:"Project slug."`
@@ -104,7 +107,7 @@ func (c *RunCmd) Run(out *output.Writer) error {
 	// Build child environment.
 	env := buildChildEnv(os.Environ(), cfg.Env, caPath)
 
-	// Install skill for known agents (silently updates stale files).
+	// Install skill and hook for known agents (silently updates stale files).
 	// Fetch the latest skill from the API; fall back to the embedded copy.
 	if name, dir, cfgDir, ok := agentSkillDir(c.Args[0]); ok {
 		skillContent := gatewaySkillFallback
@@ -112,6 +115,7 @@ func (c *RunCmd) Run(out *output.Writer) error {
 			skillContent = fetched
 		}
 		maybeInstallGatewaySkill(out, name, dir, skillContent)
+		maybeInstallGatewayHook(out, name, dir)
 
 		// Electron-based agents (e.g. Cursor) ignore embedded user:pass in
 		// HTTPS_PROXY and show a native auth dialog. Inject proxy credentials
@@ -360,6 +364,83 @@ func maybeInstallGatewaySkill(out *output.Writer, agentName, baseDir, content st
 		return
 	}
 	out.Stderr(fmt.Sprintf("onecli: installed gateway skill for %s.", agentName))
+}
+
+// maybeInstallGatewayHook installs the gateway detection hook script and
+// registers it in the agent's settings.json so the agent knows the gateway
+// is active without needing to run any visible checks.
+func maybeInstallGatewayHook(out *output.Writer, agentName, baseDir string) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return
+	}
+
+	// Write the hook script.
+	hookPath := filepath.Join(home, baseDir, "hooks", "UserPromptSubmit", "onecli_gateway_detect.sh")
+	existing, err := os.ReadFile(hookPath)
+	if err != nil || !bytes.Equal(existing, []byte(gatewayDetectHook)) {
+		if err := os.MkdirAll(filepath.Dir(hookPath), 0o750); err != nil {
+			return
+		}
+		if err := os.WriteFile(hookPath, []byte(gatewayDetectHook), 0o755); err != nil {
+			return
+		}
+	}
+
+	// Register in settings.json if not already present.
+	settingsPath := filepath.Join(home, baseDir, "settings.json")
+	settings := make(map[string]any)
+	data, readErr := os.ReadFile(settingsPath)
+	if readErr == nil && len(data) > 0 {
+		if err := json.Unmarshal(data, &settings); err != nil {
+			return
+		}
+	}
+
+	hookCommand := "bash " + hookPath
+	hooks, _ := settings["hooks"].(map[string]any)
+	if hooks == nil {
+		hooks = make(map[string]any)
+	}
+
+	entries, _ := hooks["UserPromptSubmit"].([]any)
+
+	// Check if our hook is already registered.
+	for _, entry := range entries {
+		e, _ := entry.(map[string]any)
+		innerHooks, _ := e["hooks"].([]any)
+		for _, h := range innerHooks {
+			hm, _ := h.(map[string]any)
+			if cmd, _ := hm["command"].(string); cmd == hookCommand {
+				return
+			}
+		}
+	}
+
+	// Add our hook entry.
+	entries = append(entries, map[string]any{
+		"matcher": "",
+		"hooks": []any{
+			map[string]any{
+				"type":    "command",
+				"command": hookCommand,
+			},
+		},
+	})
+	hooks["UserPromptSubmit"] = entries
+	settings["hooks"] = hooks
+
+	if err := os.MkdirAll(filepath.Dir(settingsPath), 0o750); err != nil {
+		return
+	}
+	out2, err := json.MarshalIndent(settings, "", "  ")
+	if err != nil {
+		return
+	}
+	if err := os.WriteFile(settingsPath, append(out2, '\n'), 0o600); err != nil {
+		return
+	}
+	out.Stderr(fmt.Sprintf("onecli: installed gateway hook for %s.", agentName))
 }
 
 // injectElectronProxySettings writes http.proxy and http.proxyAuthorization
