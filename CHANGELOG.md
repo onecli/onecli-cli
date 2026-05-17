@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.7.1](https://github.com/onecli/onecli-cli/compare/v1.7.0...v1.7.1) (2026-05-17)
+
+
+### Bug Fixes
+
+* auto-install gateway detection hook on agent launch ([#54](https://github.com/onecli/onecli-cli/issues/54)) ([8568f74](https://github.com/onecli/onecli-cli/commit/8568f74be86c27cec663e01b9a30c5e819211832))
+* replace raw Go errors with user-friendly messages ([#51](https://github.com/onecli/onecli-cli/issues/51)) ([6c13313](https://github.com/onecli/onecli-cli/commit/6c133134deec70918fe59d94f7b44d71f59c7ed2))
+* replace raw network errors with user-friendly gateway messages ([#49](https://github.com/onecli/onecli-cli/issues/49)) ([177c968](https://github.com/onecli/onecli-cli/commit/177c96894331ca9351480944bc6efa2c6ac2fb46))
+* surface gateway credential warnings before launching agent ([#53](https://github.com/onecli/onecli-cli/issues/53)) ([227f251](https://github.com/onecli/onecli-cli/commit/227f2516e378df989bf69374f8eb4841d6f564d0))
+
 ## [1.7.0](https://github.com/onecli/onecli-cli/compare/v1.6.1...v1.7.0) (2026-05-07)
 
 
