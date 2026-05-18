@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.7.2](https://github.com/onecli/onecli-cli/compare/v1.7.1...v1.7.2) (2026-05-18)
+
+
+### Bug Fixes
+
+* show server version and status in version command ([#31](https://github.com/onecli/onecli-cli/issues/31)) ([e13fa7e](https://github.com/onecli/onecli-cli/commit/e13fa7e1502a7386d0d6fb9e3a0756ce0d9cfb93))
+* use canonical onecli.sh domain without www prefix ([#55](https://github.com/onecli/onecli-cli/issues/55)) ([0f334f7](https://github.com/onecli/onecli-cli/commit/0f334f7bc2967883e72da651e3da037b6cb08464))
+
 ## [1.7.1](https://github.com/onecli/onecli-cli/compare/v1.7.0...v1.7.1) (2026-05-17)
 
 
