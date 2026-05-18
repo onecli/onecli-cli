@@ -40,7 +40,7 @@ main() {
 
   # Fetch latest release info from server (avoids GitHub API rate limits)
   echo "Fetching latest release..."
-  RELEASE_INFO=$(curl -fsSL "https://www.onecli.sh/cli/version?os=${OS}&arch=${ARCH}")
+  RELEASE_INFO=$(curl -fsSL "https://onecli.sh/cli/version?os=${OS}&arch=${ARCH}")
   LATEST=$(echo "$RELEASE_INFO" | sed -n '1p')
 
   if [ -z "$LATEST" ]; then
