@@ -139,8 +139,9 @@ func (c *ProjectsUpdateCmd) Run(out *output.Writer) error {
 
 // ProjectsDeleteCmd is `onecli projects delete`.
 type ProjectsDeleteCmd struct {
-	ID     string `required:"" help:"ID of the project to delete."`
-	DryRun bool   `optional:"" name:"dry-run" help:"Validate the request without executing it."`
+	ID      string `required:"" help:"ID of the project to delete."`
+	Confirm string `optional:"" help:"Project ID to confirm deletion. Required for destructive operation."`
+	DryRun  bool   `optional:"" name:"dry-run" help:"Validate the request without executing it."`
 }
 
 func (c *ProjectsDeleteCmd) Run(out *output.Writer) error {
@@ -150,10 +151,16 @@ func (c *ProjectsDeleteCmd) Run(out *output.Writer) error {
 	if c.DryRun {
 		return out.WriteDryRun("Would delete project", map[string]string{"id": c.ID})
 	}
+
+	if c.Confirm != c.ID {
+		return fmt.Errorf("confirmation failed: pass --confirm %q to delete this project and all its data", c.ID)
+	}
+
 	client, err := newClient()
 	if err != nil {
 		return err
 	}
+
 	if err := client.DeleteProject(newContext(), c.ID); err != nil {
 		return err
 	}
