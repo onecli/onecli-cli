@@ -18,7 +18,7 @@ func TestDoSetsAuthHeader(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := New(srv.URL, "oc_testkey123")
+	client := newWithPrefix(srv.URL, "oc_testkey123", "/v1")
 	var result map[string]any
 	_ = client.do(context.Background(), http.MethodGet, "/test", nil, &result)
 
@@ -36,7 +36,7 @@ func TestDoOmitsAuthHeaderWhenNoKey(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := New(srv.URL, "")
+	client := newWithPrefix(srv.URL, "", "/v1")
 	var result map[string]any
 	_ = client.do(context.Background(), http.MethodGet, "/test", nil, &result)
 
@@ -56,7 +56,7 @@ func TestDoSendsJSONBody(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := New(srv.URL, "")
+	client := newWithPrefix(srv.URL, "", "/v1")
 	body := map[string]string{"name": "test"}
 	var result map[string]any
 	_ = client.do(context.Background(), http.MethodPost, "/test", body, &result)
@@ -78,7 +78,7 @@ func TestDoNoContentTypeWithoutBody(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := New(srv.URL, "")
+	client := newWithPrefix(srv.URL, "", "/v1")
 	var result map[string]any
 	_ = client.do(context.Background(), http.MethodGet, "/test", nil, &result)
 
@@ -93,7 +93,7 @@ func TestDoHandles204(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := New(srv.URL, "")
+	client := newWithPrefix(srv.URL, "", "/v1")
 	err := client.do(context.Background(), http.MethodDelete, "/test", nil, nil)
 	if err != nil {
 		t.Errorf("204 should not return error, got %v", err)
@@ -107,7 +107,7 @@ func TestDoDecodesSuccessResponse(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := New(srv.URL, "")
+	client := newWithPrefix(srv.URL, "", "/v1")
 	var agent Agent
 	err := client.do(context.Background(), http.MethodGet, "/test", nil, &agent)
 	if err != nil {
@@ -125,7 +125,7 @@ func TestDoReturnsAPIErrorWithMessage(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := New(srv.URL, "")
+	client := newWithPrefix(srv.URL, "", "/v1")
 	err := client.do(context.Background(), http.MethodPost, "/test", nil, nil)
 
 	var apiErr *APIError
@@ -147,7 +147,7 @@ func TestDoReturnsAPIErrorFallbackMessage(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := New(srv.URL, "")
+	client := newWithPrefix(srv.URL, "", "/v1")
 	err := client.do(context.Background(), http.MethodGet, "/test", nil, nil)
 
 	var apiErr *APIError
@@ -169,7 +169,7 @@ func TestDoReturnsAPIError401(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := New(srv.URL, "")
+	client := newWithPrefix(srv.URL, "", "/v1")
 	err := client.do(context.Background(), http.MethodGet, "/test", nil, nil)
 
 	var apiErr *APIError
@@ -188,7 +188,7 @@ func TestDoReturnsAPIError404(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := New(srv.URL, "")
+	client := newWithPrefix(srv.URL, "", "/v1")
 	err := client.do(context.Background(), http.MethodGet, "/test", nil, nil)
 
 	var apiErr *APIError
@@ -219,7 +219,7 @@ func TestDoSendsCorrectMethod(t *testing.T) {
 			}))
 			defer srv.Close()
 
-			client := New(srv.URL, "")
+			client := newWithPrefix(srv.URL, "", "/v1")
 			_ = client.do(context.Background(), method, "/test", nil, nil)
 
 			if gotMethod != method {
@@ -238,7 +238,7 @@ func TestDoSendsCorrectPath(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := New(srv.URL, "")
+	client := newWithPrefix(srv.URL, "", "/v1")
 	_ = client.do(context.Background(), http.MethodGet, "/v1/agents", nil, nil)
 
 	if gotPath != "/v1/agents" {

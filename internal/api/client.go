@@ -12,6 +12,8 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -21,6 +23,8 @@ type Client struct {
 	baseURL    string
 	apiKey     string
 	httpClient *http.Client
+	prefix     string    // resolved API prefix: "/v1" or "/api"
+	prefixOnce sync.Once // ensures prefix detection runs once
 }
 
 // New creates an API client.
@@ -29,6 +33,16 @@ func New(baseURL, apiKey string) *Client {
 		baseURL:    baseURL,
 		apiKey:     apiKey,
 		httpClient: buildHTTPClient(),
+	}
+}
+
+// newWithPrefix creates a client with a pre-set prefix (for testing).
+func newWithPrefix(baseURL, apiKey, prefix string) *Client {
+	return &Client{
+		baseURL:    baseURL,
+		apiKey:     apiKey,
+		httpClient: buildHTTPClient(),
+		prefix:     prefix,
 	}
 }
 
@@ -93,9 +107,44 @@ func (c *Client) networkError(err error) error {
 	return fmt.Errorf("could not reach gateway at %s: %w", host, err)
 }
 
+// resolvePrefix probes the server once to determine whether it supports
+// /v1 (new) or /api (legacy). All subsequent requests use the resolved prefix.
+func (c *Client) resolvePrefix(ctx context.Context) {
+	if c.prefix != "" {
+		return
+	}
+	c.prefixOnce.Do(func() {
+		c.prefix = "/v1"
+		req, err := http.NewRequestWithContext(ctx, "GET", c.baseURL+"/v1/health", nil)
+		if err != nil {
+			return
+		}
+		if c.apiKey != "" {
+			req.Header.Set("Authorization", "Bearer "+c.apiKey)
+		}
+		resp, err := c.httpClient.Do(req)
+		if resp != nil {
+			resp.Body.Close()
+		}
+		if err != nil || resp.StatusCode == http.StatusNotFound {
+			c.prefix = "/api"
+		}
+	})
+}
+
+// applyPrefix replaces the /v1 prefix in path with the resolved prefix.
+func (c *Client) applyPrefix(path string) string {
+	if c.prefix == "/api" && strings.HasPrefix(path, "/v1/") {
+		return "/api" + path[3:]
+	}
+	return path
+}
+
 // do executes an HTTP request and decodes the JSON response.
 // For 204 responses, result should be nil.
 func (c *Client) do(ctx context.Context, method, path string, body any, result any) error {
+	c.resolvePrefix(ctx)
+	path = c.applyPrefix(path)
 	var bodyReader io.Reader
 	if body != nil {
 		data, err := json.Marshal(body)

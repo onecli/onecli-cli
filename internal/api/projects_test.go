@@ -23,7 +23,7 @@ func TestListProjects(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := New(srv.URL, "oc_test")
+	client := newWithPrefix(srv.URL, "oc_test", "/v1")
 	projects, err := client.ListProjects(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -46,7 +46,7 @@ func TestGetProject(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := New(srv.URL, "oc_test")
+	client := newWithPrefix(srv.URL, "oc_test", "/v1")
 	project, err := client.GetProject(context.Background(), "p1")
 	if err != nil {
 		t.Fatal(err)
@@ -71,7 +71,7 @@ func TestCreateProject(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := New(srv.URL, "oc_test")
+	client := newWithPrefix(srv.URL, "oc_test", "/v1")
 	project, err := client.CreateProject(context.Background(), CreateProjectInput{Name: "Beta"})
 	if err != nil {
 		t.Fatal(err)
@@ -97,7 +97,7 @@ func TestUpdateProject(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := New(srv.URL, "oc_test")
+	client := newWithPrefix(srv.URL, "oc_test", "/v1")
 	name := "Renamed"
 	project, err := client.UpdateProject(context.Background(), "p1", UpdateProjectInput{Name: &name})
 	if err != nil {
@@ -120,7 +120,7 @@ func TestDeleteProject(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := New(srv.URL, "oc_test")
+	client := newWithPrefix(srv.URL, "oc_test", "/v1")
 	err := client.DeleteProject(context.Background(), "p1")
 	if err != nil {
 		t.Errorf("expected no error, got %v", err)
@@ -134,7 +134,7 @@ func TestListProjectsError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := New(srv.URL, "oc_test")
+	client := newWithPrefix(srv.URL, "oc_test", "/v1")
 	_, err := client.ListProjects(context.Background())
 	if err == nil {
 		t.Error("expected error")
