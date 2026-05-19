@@ -239,10 +239,10 @@ func TestDoSendsCorrectPath(t *testing.T) {
 	defer srv.Close()
 
 	client := New(srv.URL, "")
-	_ = client.do(context.Background(), http.MethodGet, "/api/agents", nil, nil)
+	_ = client.do(context.Background(), http.MethodGet, "/v1/agents", nil, nil)
 
-	if gotPath != "/api/agents" {
-		t.Errorf("path = %q, want /api/agents", gotPath)
+	if gotPath != "/v1/agents" {
+		t.Errorf("path = %q, want /v1/agents", gotPath)
 	}
 }
 
@@ -255,27 +255,27 @@ func TestWithProjectQuery(t *testing.T) {
 	}{
 		{
 			name:      "empty project returns path unchanged",
-			path:      "/api/agents",
+			path:      "/v1/agents",
 			projectID: "",
-			want:      "/api/agents",
+			want:      "/v1/agents",
 		},
 		{
 			name:      "appends projectId query param",
-			path:      "/api/agents",
+			path:      "/v1/agents",
 			projectID: "my-project",
-			want:      "/api/agents?projectId=my-project",
+			want:      "/v1/agents?projectId=my-project",
 		},
 		{
 			name:      "preserves existing query params",
-			path:      "/api/agents?foo=bar",
+			path:      "/v1/agents?foo=bar",
 			projectID: "proj",
-			want:      "/api/agents?foo=bar&projectId=proj",
+			want:      "/v1/agents?foo=bar&projectId=proj",
 		},
 		{
 			name:      "encodes special characters",
-			path:      "/api/secrets",
+			path:      "/v1/secrets",
 			projectID: "has space&more",
-			want:      "/api/secrets?projectId=has+space%26more",
+			want:      "/v1/secrets?projectId=has+space%26more",
 		},
 	}
 	for _, tt := range tests {

@@ -51,7 +51,7 @@ type SuccessResponse struct {
 // ListAgents returns all agents for the authenticated user.
 // If projectID is non-empty, results are scoped to that project.
 func (c *Client) ListAgents(ctx context.Context, projectID string) ([]Agent, error) {
-	path := withProjectQuery("/api/agents", projectID)
+	path := withProjectQuery("/v1/agents", projectID)
 	var agents []Agent
 	if err := c.do(ctx, http.MethodGet, path, nil, &agents); err != nil {
 		return nil, fmt.Errorf("listing agents: %w", err)
@@ -62,7 +62,7 @@ func (c *Client) ListAgents(ctx context.Context, projectID string) ([]Agent, err
 // GetDefaultAgent returns the user's default agent.
 func (c *Client) GetDefaultAgent(ctx context.Context) (*Agent, error) {
 	var agent Agent
-	if err := c.do(ctx, http.MethodGet, "/api/agents/default", nil, &agent); err != nil {
+	if err := c.do(ctx, http.MethodGet, "/v1/agents/default", nil, &agent); err != nil {
 		return nil, fmt.Errorf("getting default agent: %w", err)
 	}
 	return &agent, nil
@@ -71,7 +71,7 @@ func (c *Client) GetDefaultAgent(ctx context.Context) (*Agent, error) {
 // CreateAgent creates a new agent.
 // If projectID is non-empty, the agent is created in that project.
 func (c *Client) CreateAgent(ctx context.Context, projectID string, input CreateAgentInput) (*Agent, error) {
-	path := withProjectQuery("/api/agents", projectID)
+	path := withProjectQuery("/v1/agents", projectID)
 	var agent Agent
 	if err := c.do(ctx, http.MethodPost, path, input, &agent); err != nil {
 		return nil, fmt.Errorf("creating agent: %w", err)
@@ -81,7 +81,7 @@ func (c *Client) CreateAgent(ctx context.Context, projectID string, input Create
 
 // DeleteAgent deletes an agent by ID.
 func (c *Client) DeleteAgent(ctx context.Context, id string) error {
-	if err := c.do(ctx, http.MethodDelete, "/api/agents/"+id, nil, nil); err != nil {
+	if err := c.do(ctx, http.MethodDelete, "/v1/agents/"+id, nil, nil); err != nil {
 		return fmt.Errorf("deleting agent: %w", err)
 	}
 	return nil
@@ -90,7 +90,7 @@ func (c *Client) DeleteAgent(ctx context.Context, id string) error {
 // RenameAgent renames an agent.
 func (c *Client) RenameAgent(ctx context.Context, id string, input RenameAgentInput) error {
 	var resp SuccessResponse
-	if err := c.do(ctx, http.MethodPatch, "/api/agents/"+id, input, &resp); err != nil {
+	if err := c.do(ctx, http.MethodPatch, "/v1/agents/"+id, input, &resp); err != nil {
 		return fmt.Errorf("renaming agent: %w", err)
 	}
 	return nil
@@ -99,7 +99,7 @@ func (c *Client) RenameAgent(ctx context.Context, id string, input RenameAgentIn
 // RegenerateAgentToken regenerates an agent's access token.
 func (c *Client) RegenerateAgentToken(ctx context.Context, id string) (*RegenerateTokenResponse, error) {
 	var resp RegenerateTokenResponse
-	if err := c.do(ctx, http.MethodPost, "/api/agents/"+id+"/regenerate-token", nil, &resp); err != nil {
+	if err := c.do(ctx, http.MethodPost, "/v1/agents/"+id+"/regenerate-token", nil, &resp); err != nil {
 		return nil, fmt.Errorf("regenerating agent token: %w", err)
 	}
 	return &resp, nil
@@ -108,7 +108,7 @@ func (c *Client) RegenerateAgentToken(ctx context.Context, id string) (*Regenera
 // GetAgentSecrets returns the secret IDs assigned to an agent.
 func (c *Client) GetAgentSecrets(ctx context.Context, id string) ([]string, error) {
 	var secretIDs []string
-	if err := c.do(ctx, http.MethodGet, "/api/agents/"+id+"/secrets", nil, &secretIDs); err != nil {
+	if err := c.do(ctx, http.MethodGet, "/v1/agents/"+id+"/secrets", nil, &secretIDs); err != nil {
 		return nil, fmt.Errorf("getting agent secrets: %w", err)
 	}
 	return secretIDs, nil
@@ -117,7 +117,7 @@ func (c *Client) GetAgentSecrets(ctx context.Context, id string) ([]string, erro
 // SetAgentSecrets replaces an agent's secret assignments.
 func (c *Client) SetAgentSecrets(ctx context.Context, id string, input SetAgentSecretsInput) error {
 	var resp SuccessResponse
-	if err := c.do(ctx, http.MethodPut, "/api/agents/"+id+"/secrets", input, &resp); err != nil {
+	if err := c.do(ctx, http.MethodPut, "/v1/agents/"+id+"/secrets", input, &resp); err != nil {
 		return fmt.Errorf("setting agent secrets: %w", err)
 	}
 	return nil
@@ -126,7 +126,7 @@ func (c *Client) SetAgentSecrets(ctx context.Context, id string, input SetAgentS
 // SetAgentSecretMode updates an agent's secret mode.
 func (c *Client) SetAgentSecretMode(ctx context.Context, id string, input SetSecretModeInput) error {
 	var resp SuccessResponse
-	if err := c.do(ctx, http.MethodPatch, "/api/agents/"+id+"/secret-mode", input, &resp); err != nil {
+	if err := c.do(ctx, http.MethodPatch, "/v1/agents/"+id+"/secret-mode", input, &resp); err != nil {
 		return fmt.Errorf("setting agent secret mode: %w", err)
 	}
 	return nil

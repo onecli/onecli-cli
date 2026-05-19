@@ -34,7 +34,7 @@ func (c *Client) MigrateToCloud(ctx context.Context, cloudKey string) (*MigrateR
 		"cloudApiKey": cloudKey,
 	}
 	var result MigrateResult
-	if err := c.do(ctx, http.MethodPost, "/api/migrate/export", body, &result); err != nil {
+	if err := c.do(ctx, http.MethodPost, "/v1/migrate/export", body, &result); err != nil {
 		return nil, fmt.Errorf("migrating to cloud: %w", err)
 	}
 	return &result, nil

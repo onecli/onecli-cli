@@ -13,8 +13,8 @@ func TestListProjects(t *testing.T) {
 		if r.Method != http.MethodGet {
 			t.Errorf("method = %q, want GET", r.Method)
 		}
-		if r.URL.Path != "/api/projects" {
-			t.Errorf("path = %q, want /api/projects", r.URL.Path)
+		if r.URL.Path != "/v1/projects" {
+			t.Errorf("path = %q, want /v1/projects", r.URL.Path)
 		}
 		w.WriteHeader(http.StatusOK)
 		_ = json.NewEncoder(w).Encode([]Project{
@@ -38,8 +38,8 @@ func TestGetProject(t *testing.T) {
 		if r.Method != http.MethodGet {
 			t.Errorf("method = %q, want GET", r.Method)
 		}
-		if r.URL.Path != "/api/projects/p1" {
-			t.Errorf("path = %q, want /api/projects/p1", r.URL.Path)
+		if r.URL.Path != "/v1/projects/p1" {
+			t.Errorf("path = %q, want /v1/projects/p1", r.URL.Path)
 		}
 		w.WriteHeader(http.StatusOK)
 		_ = json.NewEncoder(w).Encode(Project{ID: "p1", Name: "Alpha", Slug: "alpha"})
@@ -62,8 +62,8 @@ func TestCreateProject(t *testing.T) {
 		if r.Method != http.MethodPost {
 			t.Errorf("method = %q, want POST", r.Method)
 		}
-		if r.URL.Path != "/api/projects" {
-			t.Errorf("path = %q, want /api/projects", r.URL.Path)
+		if r.URL.Path != "/v1/projects" {
+			t.Errorf("path = %q, want /v1/projects", r.URL.Path)
 		}
 		_ = json.NewDecoder(r.Body).Decode(&gotBody)
 		w.WriteHeader(http.StatusOK)
@@ -89,8 +89,8 @@ func TestUpdateProject(t *testing.T) {
 		if r.Method != http.MethodPatch {
 			t.Errorf("method = %q, want PATCH", r.Method)
 		}
-		if r.URL.Path != "/api/projects/p1" {
-			t.Errorf("path = %q, want /api/projects/p1", r.URL.Path)
+		if r.URL.Path != "/v1/projects/p1" {
+			t.Errorf("path = %q, want /v1/projects/p1", r.URL.Path)
 		}
 		w.WriteHeader(http.StatusOK)
 		_ = json.NewEncoder(w).Encode(Project{ID: "p1", Name: "Renamed", Slug: "alpha"})
@@ -113,8 +113,8 @@ func TestDeleteProject(t *testing.T) {
 		if r.Method != http.MethodDelete {
 			t.Errorf("method = %q, want DELETE", r.Method)
 		}
-		if r.URL.Path != "/api/projects/p1" {
-			t.Errorf("path = %q, want /api/projects/p1", r.URL.Path)
+		if r.URL.Path != "/v1/projects/p1" {
+			t.Errorf("path = %q, want /v1/projects/p1", r.URL.Path)
 		}
 		w.WriteHeader(http.StatusNoContent)
 	}))

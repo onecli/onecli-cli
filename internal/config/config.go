@@ -17,7 +17,7 @@ const (
 	envProduction = "production"
 	envDev        = "dev"
 
-	defaultAPIHost = "https://app.onecli.sh"
+	defaultAPIHost = "https://api.onecli.sh"
 
 	keychainServiceProd = "onecli-api-key"
 	keychainServiceDev  = "onecli-api-key-dev"

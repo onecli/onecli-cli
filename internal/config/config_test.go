@@ -34,7 +34,7 @@ func TestAPIHostDefault(t *testing.T) {
 	t.Setenv("ONECLI_API_HOST", "")
 	// Env var not set and no config file → default
 	got := APIHost()
-	if got != "https://app.onecli.sh" {
+	if got != "https://api.onecli.sh" {
 		t.Errorf("APIHost() = %q, want default", got)
 	}
 }
@@ -214,7 +214,7 @@ func TestGetConfigValueDefaultWhenNoFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if val != "https://app.onecli.sh" {
+	if val != "https://api.onecli.sh" {
 		t.Errorf("got %q, want default", val)
 	}
 }

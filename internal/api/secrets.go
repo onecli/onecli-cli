@@ -50,7 +50,7 @@ type UpdateSecretInput struct {
 // ListSecrets returns all secrets for the authenticated user.
 // If projectID is non-empty, results are scoped to that project.
 func (c *Client) ListSecrets(ctx context.Context, projectID string) ([]Secret, error) {
-	path := withProjectQuery("/api/secrets", projectID)
+	path := withProjectQuery("/v1/secrets", projectID)
 	var secrets []Secret
 	if err := c.do(ctx, http.MethodGet, path, nil, &secrets); err != nil {
 		return nil, fmt.Errorf("listing secrets: %w", err)
@@ -61,7 +61,7 @@ func (c *Client) ListSecrets(ctx context.Context, projectID string) ([]Secret, e
 // CreateSecret creates a new secret.
 // If projectID is non-empty, the secret is created in that project.
 func (c *Client) CreateSecret(ctx context.Context, projectID string, input CreateSecretInput) (*Secret, error) {
-	path := withProjectQuery("/api/secrets", projectID)
+	path := withProjectQuery("/v1/secrets", projectID)
 	var secret Secret
 	if err := c.do(ctx, http.MethodPost, path, input, &secret); err != nil {
 		return nil, fmt.Errorf("creating secret: %w", err)
@@ -72,7 +72,7 @@ func (c *Client) CreateSecret(ctx context.Context, projectID string, input Creat
 // UpdateSecret updates an existing secret.
 func (c *Client) UpdateSecret(ctx context.Context, id string, input UpdateSecretInput) error {
 	var resp SuccessResponse
-	if err := c.do(ctx, http.MethodPatch, "/api/secrets/"+id, input, &resp); err != nil {
+	if err := c.do(ctx, http.MethodPatch, "/v1/secrets/"+id, input, &resp); err != nil {
 		return fmt.Errorf("updating secret: %w", err)
 	}
 	return nil
@@ -80,7 +80,7 @@ func (c *Client) UpdateSecret(ctx context.Context, id string, input UpdateSecret
 
 // DeleteSecret deletes a secret by ID.
 func (c *Client) DeleteSecret(ctx context.Context, id string) error {
-	if err := c.do(ctx, http.MethodDelete, "/api/secrets/"+id, nil, nil); err != nil {
+	if err := c.do(ctx, http.MethodDelete, "/v1/secrets/"+id, nil, nil); err != nil {
 		return fmt.Errorf("deleting secret: %w", err)
 	}
 	return nil

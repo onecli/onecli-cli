@@ -67,7 +67,7 @@ func TestURL(t *testing.T) {
 	}{
 		{name: "https", url: "https://example.com", wantErr: false},
 		{name: "http", url: "http://localhost:3000", wantErr: false},
-		{name: "https with path", url: "https://app.onecli.sh/api/v1", wantErr: false},
+		{name: "https with path", url: "https://api.onecli.sh/v1", wantErr: false},
 		{name: "empty", url: "", wantErr: true},
 		{name: "ftp scheme", url: "ftp://example.com", wantErr: true},
 		{name: "no scheme", url: "example.com", wantErr: true},

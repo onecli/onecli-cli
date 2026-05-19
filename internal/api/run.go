@@ -7,7 +7,7 @@ import (
 	"net/url"
 )
 
-// ContainerConfig is the response from GET /api/container-config.
+// ContainerConfig is the response from GET /v1/container-config.
 // The server controls all env var names, values, and paths.
 type ContainerConfig struct {
 	Env                        map[string]string `json:"env"`
@@ -19,7 +19,7 @@ type ContainerConfig struct {
 // GetContainerConfig returns gateway configuration for a local agent process.
 // agentIdentifier may be empty, in which case the server uses the default agent.
 func (c *Client) GetContainerConfig(ctx context.Context, agentIdentifier string) (*ContainerConfig, error) {
-	path := "/api/container-config"
+	path := "/v1/container-config"
 	if agentIdentifier != "" {
 		q := url.Values{}
 		q.Set("agent", agentIdentifier)

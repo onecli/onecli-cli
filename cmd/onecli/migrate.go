@@ -22,7 +22,7 @@ func (c *MigrateCmd) Run(out *output.Writer) error {
 	if c.DryRun {
 		return out.WriteDryRun("Would migrate data to OneCLI Cloud", map[string]string{
 			"source": config.APIHost(),
-			"target": "https://app.onecli.sh",
+			"target": "https://api.onecli.sh",
 		})
 	}
 
