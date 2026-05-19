@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.7.3](https://github.com/onecli/onecli-cli/compare/v1.7.2...v1.7.3) (2026-05-19)
+
+
+### Bug Fixes
+
+* accept openai as valid secret type in secrets create ([#59](https://github.com/onecli/onecli-cli/issues/59)) ([5d236e4](https://github.com/onecli/onecli-cli/commit/5d236e4bb3d699430142a1573435836cb210588c))
+* require --confirm flag for project deletion ([#57](https://github.com/onecli/onecli-cli/issues/57)) ([eac5b4f](https://github.com/onecli/onecli-cli/commit/eac5b4fe2e5c2817eb774d3f1e8b2742f129c6d2))
+
 ## [1.7.2](https://github.com/onecli/onecli-cli/compare/v1.7.1...v1.7.2) (2026-05-18)
 
 
