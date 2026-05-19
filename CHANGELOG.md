@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.1](https://github.com/onecli/onecli-cli/compare/v2.0.0...v2.0.1) (2026-05-19)
+
+
+### Bug Fixes
+
+* bc for api ([#63](https://github.com/onecli/onecli-cli/issues/63)) ([30e73b7](https://github.com/onecli/onecli-cli/commit/30e73b799199d41077a94749898cf58bfdba5fd8))
+
 ## [2.0.0](https://github.com/onecli/onecli-cli/compare/v1.7.3...v2.0.0) (2026-05-19)
 
 
