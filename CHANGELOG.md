@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.0.0](https://github.com/onecli/onecli-cli/compare/v1.7.3...v2.0.0) (2026-05-19)
+
+
+### ⚠ BREAKING CHANGES
+
+* All API endpoints now use /v1 prefix instead of /api. The default base URL is now api.onecli.sh. Clients using the previous /api prefix must update their configuration.
+
+### Features
+
+* migrate API prefix from /api to /v1 and default to api.onecli.sh ([#61](https://github.com/onecli/onecli-cli/issues/61)) ([c960ba3](https://github.com/onecli/onecli-cli/commit/c960ba3fd6fbb4da8ac062d062425e245c20cd5a))
+
 ## [1.7.3](https://github.com/onecli/onecli-cli/compare/v1.7.2...v1.7.3) (2026-05-19)
 
 
