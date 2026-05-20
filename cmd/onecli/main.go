@@ -29,6 +29,7 @@ type CLI struct {
 	Apps     AppsCmd     `cmd:"" help:"Manage app connections."`
 	Rules    RulesCmd    `cmd:"" help:"Manage policy rules."`
 	Projects ProjectsCmd `cmd:"" help:"Manage projects."`
+	Org      OrgCmd      `cmd:"" help:"Organization-scoped management (secrets, rules, connections, apps)."`
 	Auth     AuthCmd     `cmd:"" help:"Manage authentication."`
 	Config   ConfigCmd   `cmd:"" help:"Manage configuration settings."`
 	Migrate  MigrateCmd  `cmd:"" help:"Migrate data to OneCLI Cloud."`
@@ -145,6 +146,8 @@ func hintForCommand(cmd, host string) string {
 		return "Manage your policy rules \u2192 " + host
 	case "projects":
 		return "Manage your projects \u2192 " + host
+	case "org":
+		return "Manage organization-level resources \u2192 " + host
 	case "auth":
 		return "Manage authentication \u2192 " + host
 	case "config":

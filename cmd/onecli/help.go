@@ -137,6 +137,63 @@ func (cmd *HelpCmd) Run(out *output.Writer) error {
 			{Name: "projects delete", Description: "Delete a project.", Args: []ArgInfo{
 				{Name: "--id", Required: true, Description: "ID of the project to delete."},
 			}},
+			{Name: "org secrets list", Description: "List all org-scoped secrets."},
+			{Name: "org secrets create", Description: "Create a new org-scoped secret.", Args: []ArgInfo{
+				{Name: "--name", Required: true, Description: "Display name for the secret."},
+				{Name: "--type", Required: true, Description: "Secret type: 'anthropic', 'openai', or 'generic'."},
+				{Name: "--value", Required: true, Description: "Secret value (e.g. API key)."},
+				{Name: "--host-pattern", Required: true, Description: "Host pattern to match."},
+			}},
+			{Name: "org secrets update", Description: "Update an org-scoped secret.", Args: []ArgInfo{
+				{Name: "--id", Required: true, Description: "ID of the secret to update."},
+			}},
+			{Name: "org secrets delete", Description: "Delete an org-scoped secret.", Args: []ArgInfo{
+				{Name: "--id", Required: true, Description: "ID of the secret to delete."},
+			}},
+			{Name: "org rules list", Description: "List all org-scoped policy rules."},
+			{Name: "org rules get", Description: "Get a single org-scoped policy rule.", Args: []ArgInfo{
+				{Name: "--id", Required: true, Description: "ID of the rule to retrieve."},
+			}},
+			{Name: "org rules create", Description: "Create a new org-scoped policy rule.", Args: []ArgInfo{
+				{Name: "--name", Required: true, Description: "Display name for the rule."},
+				{Name: "--host-pattern", Required: true, Description: "Host pattern to match."},
+				{Name: "--action", Required: true, Description: "Action: 'block' or 'rate_limit'."},
+			}},
+			{Name: "org rules update", Description: "Update an org-scoped policy rule.", Args: []ArgInfo{
+				{Name: "--id", Required: true, Description: "ID of the rule to update."},
+			}},
+			{Name: "org rules delete", Description: "Delete an org-scoped policy rule.", Args: []ArgInfo{
+				{Name: "--id", Required: true, Description: "ID of the rule to delete."},
+			}},
+			{Name: "org rules permissions get", Description: "Get tool permissions for a provider.", Args: []ArgInfo{
+				{Name: "--provider", Required: true, Description: "Provider name (e.g. 'github', 'gmail')."},
+			}},
+			{Name: "org rules permissions set", Description: "Set tool permissions for a provider.", Args: []ArgInfo{
+				{Name: "--provider", Required: true, Description: "Provider name (e.g. 'github', 'gmail')."},
+				{Name: "--json", Required: true, Description: "JSON payload with 'changes' array."},
+			}},
+			{Name: "org connections list", Description: "List all org-scoped connections.", Args: []ArgInfo{
+				{Name: "--provider", Description: "Filter by provider name."},
+			}},
+			{Name: "org connections delete", Description: "Delete an org-scoped connection.", Args: []ArgInfo{
+				{Name: "--id", Required: true, Description: "ID of the connection to delete."},
+			}},
+			{Name: "org apps configured", Description: "List providers with org-level credentials configured."},
+			{Name: "org apps get", Description: "Get app config status for a provider.", Args: []ArgInfo{
+				{Name: "--provider", Required: true, Description: "Provider name (e.g. 'github', 'gmail')."},
+			}},
+			{Name: "org apps configure", Description: "Save BYOC credentials at the org level.", Args: []ArgInfo{
+				{Name: "--provider", Required: true, Description: "Provider name (e.g. 'github', 'gmail')."},
+				{Name: "--client-id", Required: true, Description: "OAuth client ID."},
+				{Name: "--client-secret", Required: true, Description: "OAuth client secret."},
+			}},
+			{Name: "org apps remove", Description: "Remove BYOC credentials at the org level.", Args: []ArgInfo{
+				{Name: "--provider", Required: true, Description: "Provider name (e.g. 'github', 'gmail')."},
+			}},
+			{Name: "org apps toggle", Description: "Enable or disable an app config at the org level.", Args: []ArgInfo{
+				{Name: "--provider", Required: true, Description: "Provider name (e.g. 'github', 'gmail')."},
+				{Name: "--enabled", Required: true, Description: "Set to true to enable, false to disable."},
+			}},
 			{Name: "auth login", Description: "Store API key for authentication."},
 			{Name: "auth logout", Description: "Remove stored API key."},
 			{Name: "auth status", Description: "Show authentication status."},
