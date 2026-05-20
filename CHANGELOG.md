@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.0](https://github.com/onecli/onecli-cli/compare/v2.0.1...v2.1.0) (2026-05-20)
+
+
+### Features
+
+* add org subcommands for apps, connections, rules, and secrets ([#65](https://github.com/onecli/onecli-cli/issues/65)) ([5411e02](https://github.com/onecli/onecli-cli/commit/5411e029e6ace0d31fc81f484af8f8778c5eb119))
+
 ## [2.0.1](https://github.com/onecli/onecli-cli/compare/v2.0.0...v2.0.1) (2026-05-19)
 
 
