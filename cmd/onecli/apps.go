@@ -160,23 +160,48 @@ func (c *AppsRemoveCmd) Run(out *output.Writer) error {
 
 // AppsDisconnectCmd is `onecli apps disconnect`.
 type AppsDisconnectCmd struct {
-	Provider string `required:"" help:"Provider name (e.g. 'github', 'gmail')."`
-	DryRun   bool   `optional:"" name:"dry-run" help:"Validate the request without executing it."`
+	Provider     string `required:"" help:"Provider name (e.g. 'github', 'gmail')."`
+	ConnectionID string `optional:"" name:"connection-id" help:"Connection ID to disconnect (required if multiple connections exist)."`
+	DryRun       bool   `optional:"" name:"dry-run" help:"Validate the request without executing it."`
 }
 
 func (c *AppsDisconnectCmd) Run(out *output.Writer) error {
 	if err := validate.ResourceID(c.Provider); err != nil {
 		return fmt.Errorf("invalid provider: %w", err)
 	}
-	if c.DryRun {
-		return out.WriteDryRun("Would disconnect app", map[string]string{"provider": c.Provider})
-	}
 	client, err := newClient()
 	if err != nil {
 		return err
 	}
-	if err := client.DisconnectApp(newContext(), c.Provider); err != nil {
+
+	connectionID := c.ConnectionID
+	if connectionID == "" {
+		connections, err := client.ListConnectionsByProvider(newContext(), c.Provider)
+		if err != nil {
+			return err
+		}
+		if len(connections) == 0 {
+			return fmt.Errorf("no connections found for %s", c.Provider)
+		}
+		if len(connections) > 1 {
+			out.Stderr(fmt.Sprintf("Multiple connections found for %s:", c.Provider))
+			for _, conn := range connections {
+				label := conn.Label
+				if label == "" {
+					label = conn.ID
+				}
+				out.Stderr(fmt.Sprintf("  %s  %s  (%s)", conn.ID, label, conn.Status))
+			}
+			return fmt.Errorf("specify --connection-id to disconnect a specific connection")
+		}
+		connectionID = connections[0].ID
+	}
+
+	if c.DryRun {
+		return out.WriteDryRun("Would disconnect app", map[string]string{"provider": c.Provider, "connectionId": connectionID})
+	}
+	if err := client.DisconnectApp(newContext(), connectionID); err != nil {
 		return err
 	}
-	return out.Write(map[string]string{"status": "disconnected", "provider": c.Provider})
+	return out.Write(map[string]string{"status": "disconnected", "provider": c.Provider, "connectionId": connectionID})
 }

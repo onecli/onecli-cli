@@ -26,6 +26,9 @@ type AppConfig struct {
 
 // AppConnection is the OAuth connection status.
 type AppConnection struct {
+	ID          string   `json:"id"`
+	Provider    string   `json:"provider"`
+	Label       string   `json:"label,omitempty"`
 	Status      string   `json:"status"`
 	Scopes      []string `json:"scopes"`
 	ConnectedAt string   `json:"connectedAt"`
@@ -55,6 +58,36 @@ func (c *Client) GetApp(ctx context.Context, provider string) (*App, error) {
 	return &app, nil
 }
 
+// ListConnections returns all app connections for the current project.
+func (c *Client) ListConnections(ctx context.Context) ([]AppConnection, error) {
+	var resp struct {
+		Connections []AppConnection `json:"connections"`
+	}
+	if err := c.do(ctx, http.MethodGet, "/v1/apps/connections", nil, &resp); err != nil {
+		return nil, fmt.Errorf("listing connections: %w", err)
+	}
+	return resp.Connections, nil
+}
+
+// ListConnectionsByProvider returns app connections for a specific provider.
+func (c *Client) ListConnectionsByProvider(ctx context.Context, provider string) ([]AppConnection, error) {
+	var resp struct {
+		Connections []AppConnection `json:"connections"`
+	}
+	if err := c.do(ctx, http.MethodGet, "/v1/apps/connections/"+provider, nil, &resp); err != nil {
+		return nil, fmt.Errorf("listing connections for %s: %w", provider, err)
+	}
+	return resp.Connections, nil
+}
+
+// DisconnectApp removes an app connection by ID.
+func (c *Client) DisconnectApp(ctx context.Context, connectionID string) error {
+	if err := c.do(ctx, http.MethodDelete, "/v1/apps/connections/"+connectionID, nil, nil); err != nil {
+		return fmt.Errorf("disconnecting app: %w", err)
+	}
+	return nil
+}
+
 // ConfigureApp saves BYOC credentials for a provider.
 func (c *Client) ConfigureApp(ctx context.Context, provider string, input ConfigAppInput) error {
 	var resp SuccessResponse
@@ -68,14 +101,6 @@ func (c *Client) ConfigureApp(ctx context.Context, provider string, input Config
 func (c *Client) UnconfigureApp(ctx context.Context, provider string) error {
 	if err := c.do(ctx, http.MethodDelete, "/v1/apps/"+provider+"/config", nil, nil); err != nil {
 		return fmt.Errorf("unconfiguring app: %w", err)
-	}
-	return nil
-}
-
-// DisconnectApp removes the OAuth connection for a provider.
-func (c *Client) DisconnectApp(ctx context.Context, provider string) error {
-	if err := c.do(ctx, http.MethodDelete, "/v1/apps/"+provider+"/connection", nil, nil); err != nil {
-		return fmt.Errorf("disconnecting app: %w", err)
 	}
 	return nil
 }
