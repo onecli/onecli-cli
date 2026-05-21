@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.2.0](https://github.com/onecli/onecli-cli/compare/v2.1.0...v2.2.0) (2026-05-21)
+
+
+### Features
+
+* add disconnect api endpoints ([#67](https://github.com/onecli/onecli-cli/issues/67)) ([f458d89](https://github.com/onecli/onecli-cli/commit/f458d891964a08da63a949eea1f631c397904399))
+
 ## [2.1.0](https://github.com/onecli/onecli-cli/compare/v2.0.1...v2.1.0) (2026-05-20)
 
 
