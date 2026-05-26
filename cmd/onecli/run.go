@@ -392,7 +392,7 @@ func maybeInstallGatewayHook(out *output.Writer, agentName, baseDir string) {
 	settings := make(map[string]any)
 	data, readErr := os.ReadFile(settingsPath)
 	if readErr == nil && len(data) > 0 {
-		if err := json.Unmarshal(data, &settings); err != nil {
+		if err := json.Unmarshal(stripJSONC(data), &settings); err != nil {
 			return
 		}
 	}
@@ -525,8 +525,8 @@ func mergeVSCodeProxySettings(path, proxyURL, authHeader string, terminalEnv map
 	settings := make(map[string]any)
 	data, readErr := os.ReadFile(path)
 	if readErr == nil && len(data) > 0 {
-		if err := json.Unmarshal(data, &settings); err != nil {
-			return fmt.Errorf("settings contains comments or invalid JSON; cannot merge proxy config")
+		if err := json.Unmarshal(stripJSONC(data), &settings); err != nil {
+			return fmt.Errorf("settings contains invalid JSON; cannot merge proxy config: %w", err)
 		}
 	}
 	settings["http.proxy"] = proxyURL
@@ -558,6 +558,72 @@ func mergeVSCodeProxySettings(path, proxyURL, authHeader string, terminalEnv map
 		return fmt.Errorf("marshaling settings: %w", err)
 	}
 	return os.WriteFile(path, append(out, '\n'), 0o600)
+}
+
+// stripJSONC converts JSONC (JSON with Comments) to strict JSON by removing
+// single-line comments (//), block comments (/* */), and trailing commas
+// before ] or }. String contents are preserved.
+func stripJSONC(data []byte) []byte {
+	out := make([]byte, 0, len(data))
+	i := 0
+	for i < len(data) {
+		// String literal — copy verbatim, including escaped quotes.
+		if data[i] == '"' {
+			out = append(out, '"')
+			i++
+			for i < len(data) {
+				if data[i] == '\\' && i+1 < len(data) {
+					out = append(out, data[i], data[i+1])
+					i += 2
+					continue
+				}
+				out = append(out, data[i])
+				if data[i] == '"' {
+					i++
+					break
+				}
+				i++
+			}
+			continue
+		}
+		// Single-line comment.
+		if i+1 < len(data) && data[i] == '/' && data[i+1] == '/' {
+			for i < len(data) && data[i] != '\n' {
+				i++
+			}
+			continue
+		}
+		// Block comment.
+		if i+1 < len(data) && data[i] == '/' && data[i+1] == '*' {
+			i += 2
+			for i < len(data) {
+				if data[i] == '*' && i+1 < len(data) && data[i+1] == '/' {
+					i += 2
+					break
+				}
+				i++
+			}
+			continue
+		}
+		out = append(out, data[i])
+		i++
+	}
+
+	// Remove trailing commas: `,` followed by optional whitespace then `]` or `}`.
+	result := make([]byte, 0, len(out))
+	for j := 0; j < len(out); j++ {
+		if out[j] == ',' {
+			k := j + 1
+			for k < len(out) && (out[k] == ' ' || out[k] == '\t' || out[k] == '\n' || out[k] == '\r') {
+				k++
+			}
+			if k < len(out) && (out[k] == ']' || out[k] == '}') {
+				continue
+			}
+		}
+		result = append(result, out[j])
+	}
+	return result
 }
 
 func stripProxyCredentials(env []string) []string {
