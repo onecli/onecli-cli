@@ -29,9 +29,12 @@ type MigrateSkipped struct {
 
 // MigrateToCloud triggers a data export from the current instance to OneCLI Cloud.
 // The server decrypts secrets and sends them directly to cloud over HTTPS.
-func (c *Client) MigrateToCloud(ctx context.Context, cloudKey string) (*MigrateResult, error) {
+func (c *Client) MigrateToCloud(ctx context.Context, cloudKey string, cloudUrl string) (*MigrateResult, error) {
 	body := map[string]string{
 		"cloudApiKey": cloudKey,
+	}
+	if cloudUrl != "" {
+		body["cloudUrl"] = cloudUrl
 	}
 	var result MigrateResult
 	if err := c.do(ctx, http.MethodPost, "/v1/migrate/export", body, &result); err != nil {
