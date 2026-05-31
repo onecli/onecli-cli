@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.2.2](https://github.com/onecli/onecli-cli/compare/v2.2.1...v2.2.2) (2026-05-31)
+
+
+### Bug Fixes
+
+* add codex secret type and --file flag for secrets create ([#71](https://github.com/onecli/onecli-cli/issues/71)) ([dc2064c](https://github.com/onecli/onecli-cli/commit/dc2064c8671eba08e72bb6afecdd86a0cde8c700))
+
 ## [2.2.1](https://github.com/onecli/onecli-cli/compare/v2.2.0...v2.2.1) (2026-05-31)
 
 
