@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.2.1](https://github.com/onecli/onecli-cli/compare/v2.2.0...v2.2.1) (2026-05-31)
+
+
+### Bug Fixes
+
+* add --cloud-url flag to migrate command ([#70](https://github.com/onecli/onecli-cli/issues/70)) ([96ae126](https://github.com/onecli/onecli-cli/commit/96ae12626b4b6eb26e1dcf7537930663edd22a31))
+
 ## [2.2.0](https://github.com/onecli/onecli-cli/compare/v2.1.0...v2.2.0) (2026-05-21)
 
 
