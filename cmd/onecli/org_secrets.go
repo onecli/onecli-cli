@@ -3,6 +3,8 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"strings"
 
 	"github.com/onecli/onecli-cli/internal/api"
 	"github.com/onecli/onecli-cli/pkg/output"
@@ -45,8 +47,9 @@ func (c *OrgSecretsListCmd) Run(out *output.Writer) error {
 // OrgSecretsCreateCmd is `onecli org secrets create`.
 type OrgSecretsCreateCmd struct {
 	Name        string `required:"" help:"Display name for the secret."`
-	Type        string `required:"" help:"Secret type: 'anthropic', 'openai', or 'generic'."`
-	Value       string `required:"" help:"Secret value (e.g. API key)."`
+	Type        string `required:"" help:"Secret type: 'anthropic', 'openai', 'codex', or 'generic'."`
+	Value       string `optional:"" help:"Secret value (e.g. API key). Required unless --file is provided."`
+	File        string `optional:"" name:"file" type:"existingfile" help:"Read secret value from a file (e.g. ~/.codex/auth.json)."`
 	HostPattern string `required:"" name:"host-pattern" help:"Host pattern to match (e.g. 'api.anthropic.com')."`
 	PathPattern string `optional:"" name:"path-pattern" help:"Path pattern to match (e.g. '/v1/*')."`
 	HeaderName  string `optional:"" name:"header-name" help:"Header name for injection (e.g. 'Authorization')."`
@@ -64,13 +67,27 @@ func (c *OrgSecretsCreateCmd) Run(out *output.Writer) error {
 			return fmt.Errorf("invalid JSON payload: %w", err)
 		}
 	} else {
+		if c.Value != "" && c.File != "" {
+			return fmt.Errorf("--value and --file are mutually exclusive")
+		}
 		if c.HeaderName != "" && c.ParamName != "" {
 			return fmt.Errorf("--header-name and --param-name are mutually exclusive")
+		}
+		value := c.Value
+		if c.File != "" {
+			data, err := os.ReadFile(c.File)
+			if err != nil {
+				return fmt.Errorf("reading file %s: %w", c.File, err)
+			}
+			value = strings.TrimSpace(string(data))
+		}
+		if value == "" {
+			return fmt.Errorf("either --value or --file is required")
 		}
 		input = api.CreateSecretInput{
 			Name:        c.Name,
 			Type:        c.Type,
-			Value:       c.Value,
+			Value:       value,
 			HostPattern: c.HostPattern,
 			PathPattern: c.PathPattern,
 		}
@@ -87,8 +104,8 @@ func (c *OrgSecretsCreateCmd) Run(out *output.Writer) error {
 		}
 	}
 
-	if input.Type != "anthropic" && input.Type != "openai" && input.Type != "generic" {
-		return fmt.Errorf("invalid type %q: must be 'anthropic', 'openai', or 'generic'", input.Type)
+	if input.Type != "anthropic" && input.Type != "openai" && input.Type != "codex" && input.Type != "generic" {
+		return fmt.Errorf("invalid type %q: must be 'anthropic', 'openai', 'codex', or 'generic'", input.Type)
 	}
 
 	if c.DryRun {
