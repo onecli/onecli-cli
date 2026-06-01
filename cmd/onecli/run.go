@@ -14,6 +14,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/onecli/onecli-cli/internal/api"
 	"github.com/onecli/onecli-cli/internal/config"
 	"github.com/onecli/onecli-cli/pkg/output"
 	"github.com/onecli/onecli-cli/pkg/validate"
@@ -107,21 +108,45 @@ func (c *RunCmd) Run(out *output.Writer) error {
 	// Build child environment.
 	env := buildChildEnv(os.Environ(), cfg.Env, caPath)
 
-	// Install skill and hook for known agents (silently updates stale files).
-	// Fetch the latest skill from the API; fall back to the embedded copy.
-	if name, dir, cfgDir, ok := agentSkillDir(c.Args[0]); ok {
+	env = append(env, "ONECLI_GATEWAY=true")
+
+	// For known agents, fetch the agent-specific skill variant and install
+	// to the agent's skill directory. Also optionally register a hook.
+	agentFramework := strings.ToLower(filepath.Base(c.Args[0]))
+	if name, dir, cfgDir, noHook, _, nativeProxy, ok := agentSkillDir(c.Args[0]); ok {
 		skillContent := gatewaySkillFallback
 		if fetched, err := client.GetGatewaySkill(newContext()); err == nil && fetched != "" {
 			skillContent = fetched
 		}
 		maybeInstallGatewaySkill(out, name, dir, skillContent)
-		maybeInstallGatewayHook(out, name, dir)
+		if !noHook {
+			maybeInstallGatewayHook(out, name, dir)
+		}
 
 		// Electron-based agents (e.g. Cursor) ignore embedded user:pass in
 		// HTTPS_PROXY and show a native auth dialog. Inject proxy credentials
 		// into the app's VS Code-style settings.json instead.
 		if cfgDir != "" {
 			env = injectElectronProxySettings(out, env, cfgDir, caPath)
+		}
+
+		// Agents with a native proxy config (e.g. Codex) need proxy_url
+		// written to their TOML config and CODEX_CA_CERTIFICATE set.
+		if nativeProxy != "" {
+			maybeInjectNativeProxyConfig(out, name, nativeProxy, env, caPath)
+		}
+		if agentFramework == "codex" {
+			maybeCreateCodexAuthStub(out, client)
+		}
+	} else {
+		// Unknown agent — install the skill to ~/.onecli/skills/ so the
+		// framework can discover it via ONECLI_GATEWAY_SKILL_PATH.
+		skillContent := gatewaySkillFallback
+		if fetched, err := client.GetGatewaySkill(newContext()); err == nil && fetched != "" {
+			skillContent = fetched
+		}
+		if p := installUniversalGatewaySkill(out, skillContent); p != "" {
+			env = append(env, "ONECLI_GATEWAY_SKILL_PATH="+p)
 		}
 	}
 
@@ -314,30 +339,33 @@ func rewriteProxyEnvHosts(env map[string]string, localHost string) {
 
 // supportedAgents maps CLI binary base-names to (agentName, skillsBaseDir) pairs.
 var supportedAgents = []struct {
-	bases     []string
-	agentName string
-	baseDir   string
-	configDir string // VS Code-style config dir name; non-empty enables proxy settings injection.
+	bases             []string
+	agentName         string
+	baseDir           string
+	configDir         string // VS Code-style config dir name; non-empty enables proxy settings injection.
+	skipHook          bool   // true for agents that don't support Claude Code-style hooks.
+	hasPlugin         bool   // true for agents that support a transform_tool_result plugin.
+	nativeProxyConfig string // home-relative dir containing a TOML config that needs proxy_url injection (e.g. ".codex").
 }{
-	{[]string{"claude"}, "Claude Code", ".claude", ""},
-	{[]string{"cursor", "agent"}, "Cursor", ".cursor", "Cursor"},
-	{[]string{"codex"}, "Codex", ".agents", ""},
-	{[]string{"hermes"}, "Hermes", ".hermes", ""},
-	{[]string{"opencode"}, "OpenCode", ".opencode", ""},
+	{[]string{"claude"}, "Claude Code", ".claude", "", false, false, ""},
+	{[]string{"cursor", "agent"}, "Cursor", ".cursor", "Cursor", false, false, ""},
+	{[]string{"codex"}, "Codex", ".agents", "", false, false, ".codex"},
+	{[]string{"hermes"}, "Hermes", ".hermes", "", true, true, ""},
+	{[]string{"opencode"}, "OpenCode", ".opencode", "", false, false, ""},
 }
 
-// agentSkillDir returns the display name and skills base directory for a known
-// agent command, or ok=false if the command is not recognized.
-func agentSkillDir(cmd string) (agentName, baseDir, configDir string, ok bool) {
+// agentSkillDir returns the display name, skills base directory, and config
+// options for a known agent command, or ok=false if the command is not recognized.
+func agentSkillDir(cmd string) (agentName, baseDir, configDir string, skipHook bool, hasPlugin bool, nativeProxyConfig string, ok bool) {
 	base := filepath.Base(cmd)
 	for _, a := range supportedAgents {
 		for _, b := range a.bases {
 			if base == b {
-				return a.agentName, a.baseDir, a.configDir, true
+				return a.agentName, a.baseDir, a.configDir, a.skipHook, a.hasPlugin, a.nativeProxyConfig, true
 			}
 		}
 	}
-	return "", "", "", false
+	return "", "", "", false, false, "", false
 }
 
 // maybeInstallGatewaySkill installs the OneCLI gateway skill file if it is
@@ -364,6 +392,114 @@ func maybeInstallGatewaySkill(out *output.Writer, agentName, baseDir, content st
 		return
 	}
 	out.Stderr(fmt.Sprintf("onecli: installed gateway skill for %s.", agentName))
+}
+
+// installUniversalGatewaySkill writes the gateway skill to
+// ~/.onecli/skills/gateway.md so any framework can reference it via
+// the ONECLI_GATEWAY_SKILL_PATH env var. Returns the path on success.
+func installUniversalGatewaySkill(out *output.Writer, content string) string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	fullPath := filepath.Join(home, ".onecli", "skills", "gateway.md")
+
+	existing, err := os.ReadFile(fullPath)
+	if err == nil && bytes.Equal(existing, []byte(content)) {
+		return fullPath
+	}
+
+	if err := os.MkdirAll(filepath.Dir(fullPath), 0o750); err != nil {
+		out.Stderr(fmt.Sprintf("onecli: warning: could not create universal skill directory: %v", err))
+		return ""
+	}
+	if err := os.WriteFile(fullPath, []byte(content), 0o600); err != nil {
+		out.Stderr(fmt.Sprintf("onecli: warning: could not write universal skill file: %v", err))
+		return ""
+	}
+	return fullPath
+}
+
+// codexAuthStub is the auth.json stub written to ~/.codex/auth.json when the
+// file does not exist. The id_token is a structurally valid JWT with email and
+// plan_type claims so Codex's local validation passes. Real credentials are
+// injected at the gateway proxy level.
+const codexAuthStub = `{
+  "auth_mode": "chatgpt",
+  "OPENAI_API_KEY": null,
+  "tokens": {
+    "id_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJvbmVjbGktbWFuYWdlZCIsImVtYWlsIjoib25lY2xpQG9uZWNsaS5zaCIsImV4cCI6NDEwMjQ0NDgwMCwiaWF0IjoxNzM1Njg5NjAwLCJodHRwczovL2FwaS5vcGVuYWkuY29tL2F1dGgiOnsiY2hhdGdwdF9wbGFuX3R5cGUiOiJmcmVlIiwiY2hhdGdwdF91c2VyX2lkIjoib25lY2xpLW1hbmFnZWQiLCJjaGF0Z3B0X2FjY291bnRfaWQiOiJvbmVjbGktbWFuYWdlZCJ9fQ.b25lY2xpLW1hbmFnZWQtc2lnbmF0dXJl",
+    "access_token": "onecli-managed",
+    "refresh_token": "onecli-managed",
+    "account_id": "onecli-managed"
+  },
+  "last_refresh": "2025-01-01T00:00:00Z"
+}
+`
+
+// maybeCreateCodexAuthStub creates ~/.codex/auth.json with onecli-managed
+// placeholder values if the file does not already exist. Fetches the latest
+// stub from the API; falls back to the embedded constant.
+func maybeCreateCodexAuthStub(out *output.Writer, client *api.Client) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return
+	}
+	authPath := filepath.Join(home, ".codex", "auth.json")
+	if _, err := os.Stat(authPath); err == nil {
+		return
+	}
+
+	content := codexAuthStub
+	if stub, err := client.GetCredentialStub(newContext(), "codex"); err == nil && stub.Content != "" {
+		content = stub.Content
+	}
+
+	if err := os.MkdirAll(filepath.Dir(authPath), 0o750); err != nil {
+		out.Stderr(fmt.Sprintf("onecli: warning: could not create .codex directory: %v", err))
+		return
+	}
+	if err := os.WriteFile(authPath, []byte(content), 0o600); err != nil {
+		out.Stderr(fmt.Sprintf("onecli: warning: could not write codex auth stub: %v", err))
+		return
+	}
+	out.Stderr("onecli: created ~/.codex/auth.json stub for gateway auth.")
+}
+
+// maybeInjectNativeProxyConfig writes proxy_url into a TOML config file for
+// agents that have their own managed proxy (e.g. Codex). Also sets the
+// agent-specific CA certificate env var.
+func maybeInjectNativeProxyConfig(out *output.Writer, agentName, configRelDir string, env []string, caPath string) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return
+	}
+
+	proxyURL := findProxyURL(env)
+	if proxyURL == "" {
+		return
+	}
+
+	configPath := filepath.Join(home, configRelDir, "config.toml")
+	data, _ := os.ReadFile(configPath)
+	content := string(data)
+
+	// Inject [network] section with proxy_url if not already present.
+	if !strings.Contains(content, "proxy_url") {
+		section := "\n[network]\nproxy_url = \"" + proxyURL + "\"\n"
+		content += section
+		if err := os.WriteFile(configPath, []byte(content), 0o600); err != nil {
+			out.Stderr(fmt.Sprintf("onecli: warning: could not write proxy config for %s: %v", agentName, err))
+			return
+		}
+		out.Stderr(fmt.Sprintf("onecli: configured native proxy for %s.", agentName))
+	}
+
+	// Set CODEX_CA_CERTIFICATE if we have a CA path — Codex reads this
+	// in addition to SSL_CERT_FILE for its Rust TLS client.
+	if caPath != "" {
+		os.Setenv("CODEX_CA_CERTIFICATE", caPath)
+	}
 }
 
 // maybeInstallGatewayHook installs the gateway detection hook script and

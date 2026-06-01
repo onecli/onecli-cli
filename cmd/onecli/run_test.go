@@ -97,24 +97,27 @@ func TestStripProxyCredentials(t *testing.T) {
 
 func TestAgentSkillDir(t *testing.T) {
 	tests := []struct {
-		cmd      string
-		wantName string
-		wantDir  string
-		wantCfg  string
-		wantOK   bool
+		cmd             string
+		wantName        string
+		wantDir         string
+		wantCfg         string
+		wantSkipHook    bool
+		wantPlugin      bool
+		wantNativeProxy string
+		wantOK          bool
 	}{
-		{"claude", "Claude Code", ".claude", "", true},
-		{"cursor", "Cursor", ".cursor", "Cursor", true},
-		{"agent", "Cursor", ".cursor", "Cursor", true},
-		{"codex", "Codex", ".agents", "", true},
-		{"hermes", "Hermes", ".hermes", "", true},
-		{"opencode", "OpenCode", ".opencode", "", true},
-		{"/usr/local/bin/cursor", "Cursor", ".cursor", "Cursor", true},
-		{"unknown", "", "", "", false},
+		{"claude", "Claude Code", ".claude", "", false, false, "", true},
+		{"cursor", "Cursor", ".cursor", "Cursor", false, false, "", true},
+		{"agent", "Cursor", ".cursor", "Cursor", false, false, "", true},
+		{"codex", "Codex", ".agents", "", false, false, ".codex", true},
+		{"hermes", "Hermes", ".hermes", "", true, true, "", true},
+		{"opencode", "OpenCode", ".opencode", "", false, false, "", true},
+		{"/usr/local/bin/cursor", "Cursor", ".cursor", "Cursor", false, false, "", true},
+		{"unknown", "", "", "", false, false, "", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.cmd, func(t *testing.T) {
-			name, dir, cfg, ok := agentSkillDir(tt.cmd)
+			name, dir, cfg, skipHook, plugin, nativeProxy, ok := agentSkillDir(tt.cmd)
 			if ok != tt.wantOK {
 				t.Fatalf("ok = %v, want %v", ok, tt.wantOK)
 			}
@@ -126,6 +129,15 @@ func TestAgentSkillDir(t *testing.T) {
 			}
 			if cfg != tt.wantCfg {
 				t.Errorf("configDir = %q, want %q", cfg, tt.wantCfg)
+			}
+			if skipHook != tt.wantSkipHook {
+				t.Errorf("skipHook = %v, want %v", skipHook, tt.wantSkipHook)
+			}
+			if plugin != tt.wantPlugin {
+				t.Errorf("hasPlugin = %v, want %v", plugin, tt.wantPlugin)
+			}
+			if nativeProxy != tt.wantNativeProxy {
+				t.Errorf("nativeProxyConfig = %q, want %q", nativeProxy, tt.wantNativeProxy)
 			}
 		})
 	}

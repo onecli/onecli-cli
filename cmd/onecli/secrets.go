@@ -53,7 +53,7 @@ func (c *SecretsListCmd) Run(out *output.Writer) error {
 type SecretsCreateCmd struct {
 	Project     string `optional:"" short:"p" help:"Project slug."`
 	Name        string `required:"" help:"Display name for the secret."`
-	Type        string `required:"" help:"Secret type: 'anthropic', 'openai', 'codex', or 'generic'."`
+	Type        string `required:"" help:"Secret type: 'anthropic', 'openai', or 'generic'."`
 	Value       string `optional:"" help:"Secret value (e.g. API key). Required unless --file is provided."`
 	File        string `optional:"" name:"file" type:"existingfile" help:"Read secret value from a file (e.g. ~/.codex/auth.json)."`
 	HostPattern string `required:"" name:"host-pattern" help:"Host pattern to match (e.g. 'api.anthropic.com')."`
@@ -110,8 +110,8 @@ func (c *SecretsCreateCmd) Run(out *output.Writer) error {
 		}
 	}
 
-	if input.Type != "anthropic" && input.Type != "openai" && input.Type != "codex" && input.Type != "generic" {
-		return fmt.Errorf("invalid type %q: must be 'anthropic', 'openai', 'codex', or 'generic'", input.Type)
+	if input.Type != "anthropic" && input.Type != "openai" && input.Type != "generic" {
+		return fmt.Errorf("invalid type %q: must be 'anthropic', 'openai', or 'generic'", input.Type)
 	}
 
 	if c.DryRun {
