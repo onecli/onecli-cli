@@ -27,6 +27,12 @@ var gatewaySkillFallback string
 //go:embed hook_gateway_detect.sh
 var gatewayDetectHook string
 
+//go:embed plugin_gateway_hermes.yaml
+var hermesPluginManifest string
+
+//go:embed plugin_gateway_hermes.py
+var hermesPluginHandler string
+
 // RunCmd is `onecli run -- <command> [args...]`.
 type RunCmd struct {
 	Project string   `optional:"" short:"p" help:"Project slug."`
@@ -123,14 +129,17 @@ func (c *RunCmd) Run(out *output.Writer) error {
 	// For known agents, fetch the agent-specific skill variant and install
 	// to the agent's skill directory. Also optionally register a hook.
 	agentFramework := strings.ToLower(filepath.Base(c.Args[0]))
-	if name, dir, cfgDir, noHook, _, nativeProxy, ok := agentSkillDir(c.Args[0]); ok {
+	if name, dir, cfgDir, noHook, plugin, nativeProxy, ok := agentSkillDir(c.Args[0]); ok {
 		skillContent := gatewaySkillFallback
-		if fetched, err := client.GetGatewaySkill(newContext()); err == nil && fetched != "" {
+		if fetched, err := client.GetGatewaySkill(newContext(), agentFramework); err == nil && fetched != "" {
 			skillContent = fetched
 		}
 		maybeInstallGatewaySkill(out, name, dir, skillContent)
 		if !noHook {
 			maybeInstallGatewayHook(out, name, dir)
+		}
+		if plugin {
+			maybeInstallGatewayPlugin(out, name, dir)
 		}
 
 		// Electron-based agents (e.g. Cursor) ignore embedded user:pass in
@@ -152,7 +161,7 @@ func (c *RunCmd) Run(out *output.Writer) error {
 		// Unknown agent — install the skill to ~/.onecli/skills/ so the
 		// framework can discover it via ONECLI_GATEWAY_SKILL_PATH.
 		skillContent := gatewaySkillFallback
-		if fetched, err := client.GetGatewaySkill(newContext()); err == nil && fetched != "" {
+		if fetched, err := client.GetGatewaySkill(newContext(), agentFramework); err == nil && fetched != "" {
 			skillContent = fetched
 		}
 		if p := installUniversalGatewaySkill(out, skillContent); p != "" {
@@ -538,6 +547,152 @@ func maybeInjectNativeProxyConfig(out *output.Writer, agentName, configRelDir st
 	// in addition to SSL_CERT_FILE for its Rust TLS client.
 	if caPath != "" {
 		os.Setenv("CODEX_CA_CERTIFICATE", caPath)
+	}
+}
+
+// maybeInstallGatewayPlugin installs a transform_tool_result plugin that
+// intercepts auth errors and appends gateway recovery instructions.
+// It also enables the plugin in the agent's config.yaml.
+func maybeInstallGatewayPlugin(out *output.Writer, agentName, baseDir string) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return
+	}
+	pluginDir := filepath.Join(home, baseDir, "plugins", "onecli-gateway")
+
+	// Write plugin.yaml.
+	manifestPath := filepath.Join(pluginDir, "plugin.yaml")
+	existingManifest, _ := os.ReadFile(manifestPath)
+	if !bytes.Equal(existingManifest, []byte(hermesPluginManifest)) {
+		if err := os.MkdirAll(pluginDir, 0o750); err != nil {
+			out.Stderr(fmt.Sprintf("onecli: warning: could not create plugin directory: %v", err))
+			return
+		}
+		if err := os.WriteFile(manifestPath, []byte(hermesPluginManifest), 0o600); err != nil {
+			out.Stderr(fmt.Sprintf("onecli: warning: could not write plugin manifest: %v", err))
+			return
+		}
+	}
+
+	// Write __init__.py.
+	handlerPath := filepath.Join(pluginDir, "__init__.py")
+	existingHandler, _ := os.ReadFile(handlerPath)
+	if !bytes.Equal(existingHandler, []byte(hermesPluginHandler)) {
+		if err := os.WriteFile(handlerPath, []byte(hermesPluginHandler), 0o600); err != nil {
+			out.Stderr(fmt.Sprintf("onecli: warning: could not write plugin handler: %v", err))
+			return
+		}
+		out.Stderr(fmt.Sprintf("onecli: installed gateway plugin for %s.", agentName))
+	}
+
+	// Enable the plugin in config.yaml if not already listed.
+	configPath := filepath.Join(home, baseDir, "config.yaml")
+	configData, _ := os.ReadFile(configPath)
+	configStr := string(configData)
+
+	if !strings.Contains(configStr, "onecli-gateway") {
+		// Append a plugins.enabled entry. If the file has no plugins section,
+		// add one. If it does, append to the enabled list.
+		if strings.Contains(configStr, "plugins:") {
+			if strings.Contains(configStr, "enabled:") {
+				// Add to existing enabled list — insert after "enabled:" line.
+				configStr = strings.Replace(configStr, "enabled:", "enabled:\n    - onecli-gateway", 1)
+			} else {
+				configStr = strings.Replace(configStr, "plugins:", "plugins:\n  enabled:\n    - onecli-gateway", 1)
+			}
+		} else {
+			if configStr != "" && !strings.HasSuffix(configStr, "\n") {
+				configStr += "\n"
+			}
+			configStr += "\nplugins:\n  enabled:\n    - onecli-gateway\n"
+		}
+		if err := os.WriteFile(configPath, []byte(configStr), 0o600); err != nil {
+			out.Stderr(fmt.Sprintf("onecli: warning: could not enable plugin in config.yaml: %v", err))
+			return
+		}
+		out.Stderr(fmt.Sprintf("onecli: enabled gateway plugin in %s config.", agentName))
+	}
+
+	// Ensure proxy URL env vars are forwarded into Docker containers.
+	// CA cert file-path vars are NOT forwarded — host paths don't exist
+	// in the container. Instead we mount the CA bundle and set docker_env.
+	proxyEnvs := []string{"HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy", "NO_PROXY", "no_proxy", "ONECLI_GATEWAY"}
+	configData, _ = os.ReadFile(configPath)
+	configStr = string(configData)
+	changed := false
+	for _, env := range proxyEnvs {
+		if !strings.Contains(configStr, env) {
+			configStr = strings.Replace(configStr, "docker_forward_env: []", "docker_forward_env:\n  - "+env, 1)
+			if !strings.Contains(configStr, env) {
+				configStr = strings.Replace(configStr, "docker_forward_env:", "docker_forward_env:\n  - "+env, 1)
+			}
+			changed = true
+		}
+	}
+
+	// Mount the CA bundle into the container and set CA env vars to the
+	// container-side path so TLS works through the gateway proxy.
+	caPath := filepath.Join(home, ".onecli", "ca-bundle.pem")
+	const containerCAPath = "/etc/ssl/certs/onecli-ca-bundle.pem"
+	volumeEntry := caPath + ":" + containerCAPath + ":ro"
+	if !strings.Contains(configStr, "onecli-ca-bundle") {
+		configStr = strings.Replace(configStr, "docker_volumes: []", "docker_volumes:\n  - "+volumeEntry, 1)
+		if !strings.Contains(configStr, "onecli-ca-bundle") {
+			configStr = strings.Replace(configStr, "docker_volumes:", "docker_volumes:\n  - "+volumeEntry, 1)
+		}
+		changed = true
+	}
+
+	// Set CA env vars and proxy URLs inside Docker via docker_env.
+	// docker_forward_env doesn't reliably forward to persistent containers,
+	// so we inject the actual values directly.
+	dockerEnvs := map[string]string{
+		"SSL_CERT_FILE":       containerCAPath,
+		"NODE_EXTRA_CA_CERTS": containerCAPath,
+		"REQUESTS_CA_BUNDLE":  containerCAPath,
+		"CURL_CA_BUNDLE":      containerCAPath,
+		"ONECLI_GATEWAY":      "true",
+	}
+	for _, k := range []string{"HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy"} {
+		if v := os.Getenv(k); v != "" {
+			dockerEnvs[k] = v
+		}
+	}
+	caEnvs := dockerEnvs
+	for k, v := range caEnvs {
+		entry := k + ": " + v
+		if !strings.Contains(configStr, entry) {
+			configStr = strings.Replace(configStr, "docker_env: {}", "docker_env:\n    "+entry, 1)
+			if !strings.Contains(configStr, entry) {
+				configStr = strings.Replace(configStr, "docker_env:", "docker_env:\n    "+entry, 1)
+			}
+			changed = true
+		}
+	}
+
+	if changed {
+		if err := os.WriteFile(configPath, []byte(configStr), 0o600); err != nil {
+			out.Stderr(fmt.Sprintf("onecli: warning: could not update Docker config: %v", err))
+		} else {
+			out.Stderr(fmt.Sprintf("onecli: configured Docker env and CA cert for %s.", agentName))
+			removeStaleAgentContainers(out, agentName)
+		}
+	}
+}
+
+// removeStaleAgentContainers removes persistent Docker containers that were
+// created before the config changed. The agent will recreate them with the
+// updated env vars and volume mounts on the next tool execution.
+func removeStaleAgentContainers(out *output.Writer, agentName string) {
+	prefix := strings.ToLower(strings.ReplaceAll(agentName, " ", "-"))
+	ids, err := exec.Command("docker", "ps", "-aq", "--filter", "name="+prefix).Output()
+	if err != nil || len(bytes.TrimSpace(ids)) == 0 {
+		return
+	}
+	for _, id := range strings.Fields(strings.TrimSpace(string(ids))) {
+		if rmErr := exec.Command("docker", "rm", "-f", id).Run(); rmErr == nil {
+			out.Stderr(fmt.Sprintf("onecli: removed stale %s container %s.", agentName, id[:12]))
+		}
 	}
 }
 
