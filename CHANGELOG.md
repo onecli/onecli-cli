@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.2.3](https://github.com/onecli/onecli-cli/compare/v2.2.2...v2.2.3) (2026-06-02)
+
+
+### Bug Fixes
+
+* add codex native proxy config and universal gateway skill fallback ([#75](https://github.com/onecli/onecli-cli/issues/75)) ([21e11d5](https://github.com/onecli/onecli-cli/commit/21e11d541d9c62252170eae4af630b9c1cdabdd1))
+
 ## [2.2.2](https://github.com/onecli/onecli-cli/compare/v2.2.1...v2.2.2) (2026-05-31)
 
 
