@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.2.4](https://github.com/onecli/onecli-cli/compare/v2.2.3...v2.2.4) (2026-06-03)
+
+
+### Bug Fixes
+
+* align org API routes with project-level paths ([#77](https://github.com/onecli/onecli-cli/issues/77)) ([22cd982](https://github.com/onecli/onecli-cli/commit/22cd9826945b90a1f4ed01a08e447489e9eed16d))
+
 ## [2.2.3](https://github.com/onecli/onecli-cli/compare/v2.2.2...v2.2.3) (2026-06-02)
 
 
