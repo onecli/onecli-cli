@@ -13,6 +13,7 @@ import (
 	"runtime"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/onecli/onecli-cli/internal/api"
 	"github.com/onecli/onecli-cli/internal/config"
@@ -420,11 +421,14 @@ func installUniversalGatewaySkill(out *output.Writer, content string) string {
 	return fullPath
 }
 
-// codexAuthStub is the auth.json stub written to ~/.codex/auth.json when the
+// codexAuthStub builds the auth.json stub written to ~/.codex/auth.json when the
 // file does not exist. The id_token is a structurally valid JWT with email and
-// plan_type claims so Codex's local validation passes. Real credentials are
-// injected at the gateway proxy level.
-const codexAuthStub = `{
+// plan_type claims so Codex's local validation passes. last_refresh is stamped
+// with the current time so Codex does not treat the onecli-managed tokens as
+// stale and try to self-refresh them; real credentials are injected at the
+// gateway proxy level.
+func codexAuthStub() string {
+	return fmt.Sprintf(`{
   "auth_mode": "chatgpt",
   "OPENAI_API_KEY": null,
   "tokens": {
@@ -433,9 +437,10 @@ const codexAuthStub = `{
     "refresh_token": "onecli-managed",
     "account_id": "onecli-managed"
   },
-  "last_refresh": "2025-01-01T00:00:00Z"
+  "last_refresh": %q
 }
-`
+`, time.Now().UTC().Format(time.RFC3339))
+}
 
 // maybeCreateCodexAuthStub creates ~/.codex/auth.json with onecli-managed
 // placeholder values if the file does not already exist. Fetches the latest
@@ -450,7 +455,7 @@ func maybeCreateCodexAuthStub(out *output.Writer, client *api.Client) {
 		return
 	}
 
-	content := codexAuthStub
+	content := codexAuthStub()
 	if stub, err := client.GetCredentialStub(newContext(), "codex"); err == nil && stub.Content != "" {
 		content = stub.Content
 	}
