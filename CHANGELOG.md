@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.2.5](https://github.com/onecli/onecli-cli/compare/v2.2.4...v2.2.5) (2026-06-10)
+
+
+### Bug Fixes
+
+* stamp Codex auth stub last_refresh at write time ([#79](https://github.com/onecli/onecli-cli/issues/79)) ([c6689ac](https://github.com/onecli/onecli-cli/commit/c6689aca03dbaf5a743fca6862bf2ed2c190268f))
+
 ## [2.2.4](https://github.com/onecli/onecli-cli/compare/v2.2.3...v2.2.4) (2026-06-03)
 
 
