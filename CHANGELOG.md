@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.2.6](https://github.com/onecli/onecli-cli/compare/v2.2.5...v2.2.6) (2026-06-15)
+
+
+### Bug Fixes
+
+* rewrite container CODEX_HOME to local ~/.codex on run ([#81](https://github.com/onecli/onecli-cli/issues/81)) ([56c26bb](https://github.com/onecli/onecli-cli/commit/56c26bb82680d9710304c6741ae7c2d4cee2f2ab))
+
 ## [2.2.5](https://github.com/onecli/onecli-cli/compare/v2.2.4...v2.2.5) (2026-06-10)
 
 
