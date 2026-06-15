@@ -78,6 +78,15 @@ func (c *RunCmd) Run(out *output.Writer) error {
 	// Keeping it in the env triggers a first-run confirmation prompt in Claude Code.
 	delete(cfg.Env, "ANTHROPIC_API_KEY")
 
+	// Some agents read their home from an env var the server returns as a
+	// container path (e.g. CODEX_HOME=/home/node/.codex), which doesn't exist
+	// on the host — Codex aborts with "path does not exist". Rewrite these to
+	// the local equivalent under the user's home, where onecli writes the auth
+	// stub and native proxy config below.
+	if home, err := os.UserHomeDir(); err == nil {
+		rewriteContainerHomeEnv(cfg.Env, home)
+	}
+
 	// Dry-run: print resolved config without side effects (no CA write,
 	// no skill install, no exec).
 	if c.DryRun {
@@ -307,6 +316,31 @@ func resolveLocalGatewayHost() string {
 		return "127.0.0.1"
 	}
 	return u.Hostname()
+}
+
+// containerHomeEnv maps env vars that the server returns as container-internal
+// home paths to their home-relative local equivalent. A local agent process
+// needs host paths (where onecli writes the agent's auth stub and config), not
+// the Docker sandbox paths the server returns (e.g. CODEX_HOME=/home/node/.codex).
+var containerHomeEnv = map[string]string{
+	"CODEX_HOME": ".codex",
+}
+
+// rewriteContainerHomeEnv replaces container-internal home paths in the server
+// env with the local equivalent under home. Codex aborts when CODEX_HOME points
+// at a path that does not exist on the host, so the container path must be
+// translated before exec. Mutating cfg.Env (rather than only appending later)
+// also ensures buildChildEnv strips any stale inherited value, so the container
+// path can't shadow the rewritten one.
+func rewriteContainerHomeEnv(env map[string]string, home string) {
+	if home == "" {
+		return
+	}
+	for k, rel := range containerHomeEnv {
+		if _, ok := env[k]; ok {
+			env[k] = filepath.Join(home, rel)
+		}
+	}
 }
 
 // rewriteProxyEnvHosts replaces Docker-internal hostnames in proxy URL values

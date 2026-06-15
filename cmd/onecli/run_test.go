@@ -95,6 +95,42 @@ func TestStripProxyCredentials(t *testing.T) {
 	}
 }
 
+func TestRewriteContainerHomeEnv(t *testing.T) {
+	t.Run("rewrites container CODEX_HOME to local", func(t *testing.T) {
+		env := map[string]string{
+			"CODEX_HOME":  "/home/node/.codex",
+			"HTTPS_PROXY": "https://proxy:8080",
+		}
+		rewriteContainerHomeEnv(env, "/Users/me")
+		if got, want := env["CODEX_HOME"], filepath.Join("/Users/me", ".codex"); got != want {
+			t.Errorf("CODEX_HOME = %q, want %q", got, want)
+		}
+		if env["HTTPS_PROXY"] != "https://proxy:8080" {
+			t.Errorf("HTTPS_PROXY mutated: %q", env["HTTPS_PROXY"])
+		}
+	})
+
+	t.Run("no-op when var absent", func(t *testing.T) {
+		env := map[string]string{"PATH": "/usr/bin"}
+		rewriteContainerHomeEnv(env, "/Users/me")
+		if _, ok := env["CODEX_HOME"]; ok {
+			t.Error("CODEX_HOME should not be added when absent")
+		}
+	})
+
+	t.Run("no-op when home empty", func(t *testing.T) {
+		env := map[string]string{"CODEX_HOME": "/home/node/.codex"}
+		rewriteContainerHomeEnv(env, "")
+		if env["CODEX_HOME"] != "/home/node/.codex" {
+			t.Errorf("CODEX_HOME = %q, want unchanged", env["CODEX_HOME"])
+		}
+	})
+
+	t.Run("nil map is safe", func(t *testing.T) {
+		rewriteContainerHomeEnv(nil, "/Users/me")
+	})
+}
+
 func TestAgentSkillDir(t *testing.T) {
 	tests := []struct {
 		cmd             string
