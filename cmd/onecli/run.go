@@ -393,6 +393,31 @@ func rewriteProxyEnvHosts(env map[string]string, localHost string) {
 	}
 }
 
+// containerHomeEnv maps env vars that the server returns as container-internal
+// home paths to their home-relative local equivalent. A local agent process
+// needs host paths (where onecli writes the agent's auth stub and config), not
+// the Docker sandbox paths the server returns (e.g. CODEX_HOME=/home/node/.codex).
+var containerHomeEnv = map[string]string{
+	"CODEX_HOME": ".codex",
+}
+
+// rewriteContainerHomeEnv replaces container-internal home paths in the server
+// env with the local equivalent under home. Codex aborts when CODEX_HOME points
+// at a path that does not exist on the host, so the container path must be
+// translated before exec. Mutating cfg.Env (rather than only appending later)
+// also ensures buildChildEnv strips any stale inherited value, so the container
+// path can't shadow the rewritten one.
+func rewriteContainerHomeEnv(env map[string]string, home string) {
+	if home == "" {
+		return
+	}
+	for k, rel := range containerHomeEnv {
+		if _, ok := env[k]; ok {
+			env[k] = filepath.Join(home, rel)
+		}
+	}
+}
+
 // isLoopbackHost reports whether h is a loopback host a Docker container cannot
 // reach directly (so it must go through host.docker.internal instead).
 func isLoopbackHost(h string) bool {
