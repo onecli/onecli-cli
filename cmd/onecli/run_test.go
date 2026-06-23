@@ -5,8 +5,11 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestFindProxyURL(t *testing.T) {
@@ -133,50 +136,318 @@ func TestRewriteContainerHomeEnv(t *testing.T) {
 
 func TestAgentSkillDir(t *testing.T) {
 	tests := []struct {
-		cmd             string
-		wantName        string
-		wantDir         string
-		wantCfg         string
-		wantSkipHook    bool
-		wantPlugin      bool
-		wantNativeProxy string
-		wantOK          bool
+		cmd  string
+		want agentSpec
+		ok   bool
 	}{
-		{"claude", "Claude Code", ".claude", "", false, false, "", true},
-		{"cursor", "Cursor", ".cursor", "Cursor", false, false, "", true},
-		{"agent", "Cursor", ".cursor", "Cursor", false, false, "", true},
-		{"codex", "Codex", ".agents", "", false, false, ".codex", true},
-		{"hermes", "Hermes", ".hermes", "", true, true, "", true},
-		{"opencode", "OpenCode", ".opencode", "", false, false, "", true},
-		{"/usr/local/bin/cursor", "Cursor", ".cursor", "Cursor", false, false, "", true},
-		{"unknown", "", "", "", false, false, "", false},
+		{"claude", agentSpec{agentName: "Claude Code", baseDir: ".claude"}, true},
+		{"cursor", agentSpec{agentName: "Cursor", baseDir: ".cursor", configDir: "Cursor"}, true},
+		{"agent", agentSpec{agentName: "Cursor", baseDir: ".cursor", configDir: "Cursor"}, true},
+		{"codex", agentSpec{agentName: "Codex", baseDir: ".agents", nativeProxyConfig: ".codex"}, true},
+		{"hermes", agentSpec{agentName: "Hermes", baseDir: ".hermes", skipHook: true, pluginGateway: true, dockerSandbox: true}, true},
+		{"opencode", agentSpec{agentName: "OpenCode", baseDir: ".opencode"}, true},
+		{"/usr/local/bin/cursor", agentSpec{agentName: "Cursor", baseDir: ".cursor", configDir: "Cursor"}, true},
+		{"unknown", agentSpec{}, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.cmd, func(t *testing.T) {
-			name, dir, cfg, skipHook, plugin, nativeProxy, ok := agentSkillDir(tt.cmd)
-			if ok != tt.wantOK {
-				t.Fatalf("ok = %v, want %v", ok, tt.wantOK)
+			got, ok := agentSkillDir(tt.cmd)
+			if ok != tt.ok {
+				t.Fatalf("ok = %v, want %v", ok, tt.ok)
 			}
-			if name != tt.wantName {
-				t.Errorf("name = %q, want %q", name, tt.wantName)
-			}
-			if dir != tt.wantDir {
-				t.Errorf("dir = %q, want %q", dir, tt.wantDir)
-			}
-			if cfg != tt.wantCfg {
-				t.Errorf("configDir = %q, want %q", cfg, tt.wantCfg)
-			}
-			if skipHook != tt.wantSkipHook {
-				t.Errorf("skipHook = %v, want %v", skipHook, tt.wantSkipHook)
-			}
-			if plugin != tt.wantPlugin {
-				t.Errorf("hasPlugin = %v, want %v", plugin, tt.wantPlugin)
-			}
-			if nativeProxy != tt.wantNativeProxy {
-				t.Errorf("nativeProxyConfig = %q, want %q", nativeProxy, tt.wantNativeProxy)
+			if got != tt.want {
+				t.Errorf("spec = %+v, want %+v", got, tt.want)
 			}
 		})
 	}
+}
+
+func TestProxyURLWithHost(t *testing.T) {
+	tests := []struct{ name, raw, host, want string }{
+		{"rewrites host keeping port+creds", "http://aoc_tok:x@127.0.0.1:10255", "host.docker.internal", "http://aoc_tok:x@host.docker.internal:10255"},
+		{"no port", "http://aoc_tok@localhost", "host.docker.internal", "http://aoc_tok@host.docker.internal"},
+		{"empty input", "", "host.docker.internal", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := proxyURLWithHost(tt.raw, tt.host); got != tt.want {
+				t.Errorf("got %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestPrependPythonPath(t *testing.T) {
+	sep := string(os.PathListSeparator)
+	t.Run("absent appends", func(t *testing.T) {
+		got := prependPythonPath([]string{"HOME=/h"}, "/shim")
+		if v, _ := envValue(got, "PYTHONPATH"); v != "/shim" {
+			t.Errorf("PYTHONPATH = %q, want /shim", v)
+		}
+	})
+	t.Run("existing prepends", func(t *testing.T) {
+		got := prependPythonPath([]string{"PYTHONPATH=/a" + sep + "/b"}, "/shim")
+		want := "/shim" + sep + "/a" + sep + "/b"
+		if v, _ := envValue(got, "PYTHONPATH"); v != want {
+			t.Errorf("PYTHONPATH = %q, want %q", v, want)
+		}
+	})
+	t.Run("idempotent when already present", func(t *testing.T) {
+		got := prependPythonPath([]string{"PYTHONPATH=/shim" + sep + "/a"}, "/shim")
+		if v, _ := envValue(got, "PYTHONPATH"); v != "/shim"+sep+"/a" {
+			t.Errorf("PYTHONPATH = %q", v)
+		}
+	})
+}
+
+func TestHermesSandboxEnv(t *testing.T) {
+	var cfg hermesConfig
+	cfg.Terminal.DockerEnv = map[string]any{"FOO": "bar"}
+	cfg.Terminal.DockerVolumes = []string{"/data:/data"}
+
+	env := hermesSandboxEnv(cfg, "/home/u/.onecli/ca-bundle.pem", "/home/u/.onecli/pyca",
+		"http://aoc_t:x@host.docker.internal:10255")
+
+	if v, _ := envValue(env, "TERMINAL_DOCKER_PERSIST_ACROSS_PROCESSES"); v != "false" {
+		t.Errorf("persist = %q, want false", v)
+	}
+
+	rawEnv, ok := envValue(env, "TERMINAL_DOCKER_ENV")
+	if !ok {
+		t.Fatal("TERMINAL_DOCKER_ENV missing")
+	}
+	var de map[string]string
+	if err := json.Unmarshal([]byte(rawEnv), &de); err != nil {
+		t.Fatalf("docker_env not valid JSON: %v", err)
+	}
+	if de["FOO"] != "bar" {
+		t.Errorf("user docker_env clobbered: FOO=%q", de["FOO"])
+	}
+	if de["HTTPS_PROXY"] != "http://aoc_t:x@host.docker.internal:10255" {
+		t.Errorf("HTTPS_PROXY = %q", de["HTTPS_PROXY"])
+	}
+	if de["SSL_CERT_FILE"] != "/etc/ssl/onecli-ca.pem" {
+		t.Errorf("SSL_CERT_FILE = %q", de["SSL_CERT_FILE"])
+	}
+	if de["PYTHONPATH"] != "/opt/onecli-pyca" {
+		t.Errorf("PYTHONPATH = %q", de["PYTHONPATH"])
+	}
+	if de["ONECLI_GATEWAY"] != "true" {
+		t.Errorf("ONECLI_GATEWAY = %q", de["ONECLI_GATEWAY"])
+	}
+
+	rawVol, _ := envValue(env, "TERMINAL_DOCKER_VOLUMES")
+	var vols []string
+	if err := json.Unmarshal([]byte(rawVol), &vols); err != nil {
+		t.Fatalf("volumes not valid JSON: %v", err)
+	}
+	if !slices.Contains(vols, "/data:/data") {
+		t.Errorf("user volume dropped: %v", vols)
+	}
+	if !slices.Contains(vols, "/home/u/.onecli/ca-bundle.pem:/etc/ssl/onecli-ca.pem:ro") {
+		t.Errorf("CA mount missing: %v", vols)
+	}
+}
+
+func TestHermesSandboxEnv_NoCA(t *testing.T) {
+	env := hermesSandboxEnv(hermesConfig{}, "", "", "")
+	rawEnv, _ := envValue(env, "TERMINAL_DOCKER_ENV")
+	var de map[string]string
+	_ = json.Unmarshal([]byte(rawEnv), &de)
+	if _, ok := de["SSL_CERT_FILE"]; ok {
+		t.Errorf("should not set CA env when caPath empty: %v", de)
+	}
+	if de["ONECLI_GATEWAY"] != "true" {
+		t.Error("ONECLI_GATEWAY should still be set")
+	}
+}
+
+func TestContainerProxyURLFor(t *testing.T) {
+	const server = "http://aoc_tok:x@host.docker.internal:10255"
+	tests := []struct{ name, gatewayHost, want string }{
+		{"loopback 127.0.0.1 → host.docker.internal", "127.0.0.1", "http://aoc_tok:x@host.docker.internal:10255"},
+		{"loopback localhost → host.docker.internal", "localhost", "http://aoc_tok:x@host.docker.internal:10255"},
+		{"routable cloud host kept as-is", "api.onecli.sh", "http://aoc_tok:x@api.onecli.sh:10255"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := containerProxyURLFor(server, tt.gatewayHost); got != tt.want {
+				t.Errorf("got %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestHermesSandboxEnv_AddHost(t *testing.T) {
+	addHostPresent := func(env []string) bool {
+		raw, _ := envValue(env, "TERMINAL_DOCKER_EXTRA_ARGS")
+		var args []string
+		_ = json.Unmarshal([]byte(raw), &args)
+		return slices.Contains(args, "host.docker.internal:host-gateway")
+	}
+
+	// host.docker.internal proxy → --add-host only on Linux.
+	hdi := hermesSandboxEnv(hermesConfig{}, "/ca.pem", "/shim", "http://t@host.docker.internal:10255")
+	if got, want := addHostPresent(hdi), runtime.GOOS == "linux"; got != want {
+		t.Errorf("host.docker.internal proxy: --add-host=%v, want %v (GOOS=%s)", got, want, runtime.GOOS)
+	}
+
+	// Routable gateway host → never --add-host (container connects directly).
+	if addHostPresent(hermesSandboxEnv(hermesConfig{}, "/ca.pem", "/shim", "http://t@api.onecli.sh:10255")) {
+		t.Error("routable gateway host should not get --add-host")
+	}
+}
+
+func TestHermesSandboxEnv_PythonPath(t *testing.T) {
+	// User's docker_env PYTHONPATH is preserved (shim prepended), not clobbered.
+	var cfg hermesConfig
+	cfg.Terminal.DockerEnv = map[string]any{"PYTHONPATH": "/app/libs"}
+	env := hermesSandboxEnv(cfg, "/ca.pem", "/shim", "")
+	raw, _ := envValue(env, "TERMINAL_DOCKER_ENV")
+	var de map[string]string
+	if err := json.Unmarshal([]byte(raw), &de); err != nil {
+		t.Fatalf("docker_env not valid JSON: %v", err)
+	}
+	if de["PYTHONPATH"] != "/opt/onecli-pyca:/app/libs" {
+		t.Errorf("PYTHONPATH = %q, want shim prepended to user value", de["PYTHONPATH"])
+	}
+
+	// No shim installed (shimDir=="") → don't point PYTHONPATH at an unmounted dir.
+	env = hermesSandboxEnv(hermesConfig{}, "/ca.pem", "", "")
+	raw, _ = envValue(env, "TERMINAL_DOCKER_ENV")
+	de = nil
+	_ = json.Unmarshal([]byte(raw), &de)
+	if _, ok := de["PYTHONPATH"]; ok {
+		t.Errorf("PYTHONPATH should be unset when shim absent: %q", de["PYTHONPATH"])
+	}
+}
+
+func TestEnableHermesPlugin(t *testing.T) {
+	t.Run("creates minimal config when absent", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "config.yaml")
+		changed, err := enableHermesPlugin(path, "onecli-gateway")
+		if err != nil || !changed {
+			t.Fatalf("changed=%v err=%v", changed, err)
+		}
+		assertPluginEnabled(t, path)
+	})
+
+	t.Run("adds to existing config preserving other keys", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "config.yaml")
+		writeJSON(t, path, "terminal:\n  backend: docker\nsecurity:\n  redact_secrets: true\n")
+		changed, err := enableHermesPlugin(path, "onecli-gateway")
+		if err != nil || !changed {
+			t.Fatalf("changed=%v err=%v", changed, err)
+		}
+		data, _ := os.ReadFile(path)
+		if s := string(data); !strings.Contains(s, "backend: docker") || !strings.Contains(s, "redact_secrets") {
+			t.Errorf("existing keys lost:\n%s", s)
+		}
+		assertPluginEnabled(t, path)
+	})
+
+	t.Run("idempotent when already enabled", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "config.yaml")
+		writeJSON(t, path, "plugins:\n  enabled:\n    - onecli-gateway\n")
+		changed, err := enableHermesPlugin(path, "onecli-gateway")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if changed {
+			t.Error("should be a no-op when already enabled")
+		}
+	})
+
+	t.Run("adds enabled list under existing plugins", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "config.yaml")
+		writeJSON(t, path, "plugins:\n  disabled:\n    - noisy\n")
+		changed, err := enableHermesPlugin(path, "onecli-gateway")
+		if err != nil || !changed {
+			t.Fatalf("changed=%v err=%v", changed, err)
+		}
+		assertPluginEnabled(t, path)
+		if data, _ := os.ReadFile(path); !strings.Contains(string(data), "noisy") {
+			t.Errorf("existing plugins.disabled lost:\n%s", data)
+		}
+	})
+
+	t.Run("promotes scalar enabled, keeping the user's value", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "config.yaml")
+		writeJSON(t, path, "plugins:\n  enabled: my-plugin\n")
+		changed, err := enableHermesPlugin(path, "onecli-gateway")
+		if err != nil || !changed {
+			t.Fatalf("changed=%v err=%v", changed, err)
+		}
+		assertPluginEnabled(t, path)
+		if data, _ := os.ReadFile(path); !strings.Contains(string(data), "my-plugin") {
+			t.Errorf("user's scalar plugin value was dropped:\n%s", data)
+		}
+	})
+
+	t.Run("explicit null enabled becomes a clean sequence, no literal null entry", func(t *testing.T) {
+		for _, nullForm := range []string{"null", "~", ""} {
+			path := filepath.Join(t.TempDir(), "config.yaml")
+			writeJSON(t, path, "plugins:\n  enabled: "+nullForm+"\n")
+			changed, err := enableHermesPlugin(path, "onecli-gateway")
+			if err != nil || !changed {
+				t.Fatalf("nullForm=%q: changed=%v err=%v", nullForm, changed, err)
+			}
+			assertPluginEnabled(t, path)
+			data, _ := os.ReadFile(path)
+			var cfg struct {
+				Plugins struct {
+					Enabled []string `yaml:"enabled"`
+				} `yaml:"plugins"`
+			}
+			if err := yaml.Unmarshal(data, &cfg); err != nil {
+				t.Fatalf("nullForm=%q: result not valid YAML: %v", nullForm, err)
+			}
+			if want := []string{"onecli-gateway"}; !slices.Equal(cfg.Plugins.Enabled, want) {
+				t.Errorf("nullForm=%q: enabled = %v, want %v (a null scalar must not become a list entry)", nullForm, cfg.Plugins.Enabled, want)
+			}
+		}
+	})
+
+	t.Run("errors on duplicate plugins keys instead of false success", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "config.yaml")
+		writeJSON(t, path, "plugins:\n  enabled:\n    - a\nplugins:\n  enabled:\n    - b\n")
+		changed, err := enableHermesPlugin(path, "onecli-gateway")
+		if err == nil {
+			t.Error("expected an error for duplicate top-level plugins keys")
+		}
+		if changed {
+			t.Error("must not report changed=true on a duplicate-key config")
+		}
+	})
+}
+
+func envValue(env []string, key string) (string, bool) {
+	for _, kv := range env {
+		if strings.HasPrefix(kv, key+"=") {
+			return kv[len(key)+1:], true
+		}
+	}
+	return "", false
+}
+
+func assertPluginEnabled(t *testing.T, path string) {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cfg struct {
+		Plugins struct {
+			Enabled []string `yaml:"enabled"`
+		} `yaml:"plugins"`
+	}
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		t.Fatalf("result not valid YAML: %v\n%s", err, data)
+	}
+	if slices.Contains(cfg.Plugins.Enabled, "onecli-gateway") {
+		return
+	}
+	t.Errorf("onecli-gateway not in plugins.enabled:\n%s", data)
 }
 
 func TestVscodeSettingsPath(t *testing.T) {

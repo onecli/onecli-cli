@@ -1,6 +1,6 @@
 name: onecli-gateway
-version: "0.7.0"
+version: "0.8.0"
 description: "Intercepts auth errors and injects OneCLI gateway recovery instructions"
 author: "OneCLI"
-hooks:
+provides_hooks:
   - transform_tool_result

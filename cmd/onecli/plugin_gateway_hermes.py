@@ -12,17 +12,26 @@ from typing import Any, Optional
 
 log = logging.getLogger("onecli-gateway")
 
-_AUTH_PATTERNS = [
+# Specific, low-false-positive markers — safe to match even on a successful
+# result, since they almost never appear in benign tool output.
+_AUTH_PATTERNS_STRICT = [
     "not_authenticated",
     "no token at",
-    "missing token",
     "oauth_client_disabled",
     "token_revoked",
     "token_invalid",
     "token_corrupt",
-    "credentials not found",
-    "authentication required",
+    "refresh_failed",
+]
+
+# Looser natural-language phrases — only trusted when the tool actually errored,
+# so a successful result that merely mentions them (an email subject, a web
+# page) isn't rewritten with the recovery hint.
+_AUTH_PATTERNS_LOOSE = [
     "not authenticated",
+    "authentication required",
+    "credentials not found",
+    "missing token",
 ]
 
 _RECOVERY_HINT = """
@@ -30,15 +39,18 @@ _RECOVERY_HINT = """
 === OneCLI Gateway: Auth Error Recovery ===
 
 This auth error is handled by the OneCLI gateway proxy.
-Do NOT follow OAuth setup, API key, or App Password instructions.
+Do NOT follow OAuth, API-key, or App-Password setup instructions.
 
-STEP 1 — Create a stub credential file at the path mentioned in the error.
+STEP 1 — Create a stub credential file at the EXACT path named in the error
+above (e.g. the path after "No token at ..."). Use "onecli-managed" for every
+secret value and match the format the tool expects. Examples (substitute the
+real path from the error for <PATH>):
 
-  For Google tokens (google_token.json):
-    echo '{"type":"authorized_user","access_token":"onecli-managed","refresh_token":"onecli-managed","client_id":"onecli-managed","client_secret":"onecli-managed","token_uri":"https://oauth2.googleapis.com/token","expiry":"2099-01-01T00:00:00+00:00"}' > /root/.hermes/google_token.json && chmod 600 /root/.hermes/google_token.json
+  Google OAuth token file:
+    echo '{"type":"authorized_user","access_token":"onecli-managed","refresh_token":"onecli-managed","client_id":"onecli-managed","client_secret":"onecli-managed","token_uri":"https://oauth2.googleapis.com/token","expiry":"2099-01-01T00:00:00+00:00"}' > "<PATH>" && chmod 600 "<PATH>"
 
-  For other credentials:
-    echo '{"api_key":"onecli-managed"}' > <path> && chmod 600 <path>
+  Generic JSON credential / API-key file:
+    echo '{"api_key":"onecli-managed"}' > "<PATH>" && chmod 600 "<PATH>"
 
 STEP 2 — Retry the failed operation. The gateway replaces "onecli-managed"
 placeholders with real credentials at the network level.
@@ -64,21 +76,46 @@ def _result_to_str(result):
     return str(result) if result is not None else ""
 
 
-def _has_auth_error(text):
+def _looks_like_error(status, error_type, error_message):
+    """Best-effort: did this tool call actually fail? Hermes passes these
+    fields to transform_tool_result; older versions may not, in which case we
+    fall back to strict-pattern matching only."""
+    if error_type or error_message:
+        return True
+    if isinstance(status, str) and status.lower() not in (
+        "",
+        "ok",
+        "success",
+        "succeeded",
+        "completed",
+    ):
+        return True
+    return False
+
+
+def _has_auth_error(text, is_error):
     lower = text.lower()
-    return any(p in lower for p in _AUTH_PATTERNS)
+    if any(p in lower for p in _AUTH_PATTERNS_STRICT):
+        return True
+    if is_error and any(p in lower for p in _AUTH_PATTERNS_LOOSE):
+        return True
+    return False
 
 
 def _on_transform_tool_result(
     tool_name: str = "",
     args: Any = None,
     result: Any = None,
+    status: Any = None,
+    error_type: Any = None,
+    error_message: Any = None,
     **_: Any,
 ) -> Optional[str]:
     if not _is_gateway_active():
         return None
     text = _result_to_str(result)
-    if not _has_auth_error(text):
+    is_error = _looks_like_error(status, error_type, error_message)
+    if not _has_auth_error(text, is_error):
         return None
     log.warning("OneCLI gateway intercepted auth error in %s, injecting recovery hint", tool_name)
     if isinstance(result, str):

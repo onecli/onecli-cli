@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 )
 
 // GetGatewaySkill fetches the gateway skill markdown from the API.
@@ -13,7 +14,7 @@ func (c *Client) GetGatewaySkill(ctx context.Context, agentFramework string) (st
 	c.resolvePrefix(ctx)
 	path := c.applyPrefix("/v1/skill/gateway")
 	if agentFramework != "" {
-		path += "?agent_framework=" + agentFramework
+		path += "?" + url.Values{"agent_framework": {agentFramework}}.Encode()
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path, nil)
 	if err != nil {

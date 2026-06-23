@@ -61,8 +61,9 @@ configured:
 1. **Do NOT follow the tool's manual auth setup flow.** Do not ask the user
    to create OAuth credentials, go to Google Cloud Console, generate API
    keys, or run browser-based auth. The gateway handles all credentials.
-2. **Identify what file or config the tool expects** (path and format).
-3. **Create a stub file** at that path using `"onecli-managed"` as the
+2. **Use the exact path named in the error** (e.g. the path after
+   `No token at ...`) and the format the tool expects.
+3. **Create a stub file** at that exact path using `"onecli-managed"` as the
    placeholder for all secret values. Match the format the tool expects.
    Set file permissions to `0600`.
 4. **Retry the operation.** The HTTP request goes through the proxy, which
