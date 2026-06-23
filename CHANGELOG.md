@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.2.7](https://github.com/onecli/onecli-cli/compare/v2.2.6...v2.2.7) (2026-06-23)
+
+
+### Bug Fixes
+
+* add support for hermes ([#74](https://github.com/onecli/onecli-cli/issues/74)) ([e830622](https://github.com/onecli/onecli-cli/commit/e830622769db52d6c91f6c79b3d6a2267b00aa5f))
+
 ## [2.2.6](https://github.com/onecli/onecli-cli/compare/v2.2.5...v2.2.6) (2026-06-15)
 
 
