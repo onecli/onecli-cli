@@ -571,21 +571,93 @@ func TestMergeVSCodeProxySettings_TerminalEnv(t *testing.T) {
 	}
 }
 
-func TestMergeVSCodeProxySettings_RejectsJSONC(t *testing.T) {
+func TestMergeVSCodeProxySettings_HandlesJSONC(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "settings.json")
 	writeJSON(t, path, `{
     // this is a comment
-    "editor.fontSize": 14
+    "editor.fontSize": 14,
 }
 `)
 
 	err := mergeVSCodeProxySettings(path, "https://proxy:8080", "Basic dTpw", nil)
-	if err == nil {
-		t.Fatal("expected error for JSONC input")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(err.Error(), "comments or invalid JSON") {
-		t.Errorf("error = %q, want mention of comments", err.Error())
+
+	got := readSettingsMap(t, path)
+	if got["editor.fontSize"] != float64(14) {
+		t.Errorf("editor.fontSize = %v, want 14", got["editor.fontSize"])
+	}
+	if got["http.proxy"] != "https://proxy:8080" {
+		t.Errorf("http.proxy = %v", got["http.proxy"])
+	}
+}
+
+func TestStripJSONC(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			"strict JSON unchanged",
+			`{"key": "value", "num": 42}`,
+			`{"key": "value", "num": 42}`,
+		},
+		{
+			"single-line comments",
+			"{// comment\n\"key\": \"value\"\n}",
+			"{\n\"key\": \"value\"\n}",
+		},
+		{
+			"block comments",
+			`{"key": /* inline */ "value"}`,
+			`{"key":  "value"}`,
+		},
+		{
+			"trailing comma before }",
+			`{"a": 1, "b": 2,}`,
+			`{"a": 1, "b": 2}`,
+		},
+		{
+			"trailing comma before ]",
+			`[1, 2, 3,]`,
+			`[1, 2, 3]`,
+		},
+		{
+			"trailing comma with whitespace",
+			"{\"a\": 1,\n  }",
+			"{\"a\": 1\n  }",
+		},
+		{
+			"slashes inside strings preserved",
+			`{"url": "https://example.com"}`,
+			`{"url": "https://example.com"}`,
+		},
+		{
+			"escaped quotes in strings",
+			`{"key": "val\"ue // not a comment"}`,
+			`{"key": "val\"ue // not a comment"}`,
+		},
+		{
+			"unterminated block comment",
+			`{"a": 1} /* oops`,
+			`{"a": 1} `,
+		},
+		{
+			"combined comments and trailing commas",
+			"{\n  // editor settings\n  \"fontSize\": 14,\n  \"theme\": \"dark\", // inline\n}",
+			"{\n  \n  \"fontSize\": 14,\n  \"theme\": \"dark\" \n}",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := string(stripJSONC([]byte(tt.input)))
+			if got != tt.want {
+				t.Errorf("got  %q\nwant %q", got, tt.want)
+			}
+		})
 	}
 }
 
