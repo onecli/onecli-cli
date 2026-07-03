@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.3.0](https://github.com/onecli/onecli-cli/compare/v2.2.7...v2.3.0) (2026-07-03)
+
+
+### Features
+
+* align the CLI with the current cloud API and expose its full surface ([#85](https://github.com/onecli/onecli-cli/issues/85)) ([5d5a0c8](https://github.com/onecli/onecli-cli/commit/5d5a0c8a79c5f5801df249b8aaf61f5c1aecff50))
+
 ## [2.2.7](https://github.com/onecli/onecli-cli/compare/v2.2.6...v2.2.7) (2026-06-23)
 
 
