@@ -16,7 +16,7 @@ onecli auth status
 2. **Always `list` before acting** — get IDs from list commands, then pass explicit IDs
 3. **Use `--fields` on list commands** — request only the fields you need
 4. **Use `--dry-run` before mutating** — preview changes before applying them
-5. **Check exit codes** — 0 = success, 1 = error, 2 = auth required, 3 = not found, 4 = conflict
+5. **Check exit codes** — 0 = success, 1 = error, 2 = auth required, 3 = not found, 4 = conflict, 5 = forbidden (do not retry)
 
 ## Common Workflows
 

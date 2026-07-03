@@ -17,6 +17,27 @@ type OrgRulesCmd struct {
 	Update      OrgRulesUpdateCmd      `cmd:"" help:"Update an org-scoped policy rule."`
 	Delete      OrgRulesDeleteCmd      `cmd:"" help:"Delete an org-scoped policy rule."`
 	Permissions OrgRulesPermissionsCmd `cmd:"" help:"Manage app-level tool permissions."`
+	Overlap     OrgRulesOverlapCmd     `cmd:"" help:"Count custom org rules overlapping an app's hosts."`
+}
+
+// OrgRulesOverlapCmd is `onecli org rules overlap`.
+type OrgRulesOverlapCmd struct {
+	Provider string `required:"" help:"Provider name (e.g. 'github', 'gmail')."`
+}
+
+func (c *OrgRulesOverlapCmd) Run(out *output.Writer) error {
+	if err := validate.ResourceID(c.Provider); err != nil {
+		return fmt.Errorf("invalid provider: %w", err)
+	}
+	client, err := newClient()
+	if err != nil {
+		return err
+	}
+	count, err := client.GetOrgRuleOverlap(newContext(), c.Provider)
+	if err != nil {
+		return err
+	}
+	return out.Write(count)
 }
 
 // OrgRulesListCmd is `onecli org rules list`.
@@ -69,10 +90,9 @@ func (c *OrgRulesGetCmd) Run(out *output.Writer) error {
 type OrgRulesCreateCmd struct {
 	Name            string `required:"" help:"Display name for the rule."`
 	HostPattern     string `required:"" name:"host-pattern" help:"Host pattern to match (e.g. 'api.anthropic.com')."`
-	Action          string `required:"" help:"Action to take: 'block' or 'rate_limit'."`
+	Action          string `required:"" help:"Action to take: 'block', 'rate_limit', 'manual_approval', or 'allow'."`
 	PathPattern     string `optional:"" name:"path-pattern" help:"Path pattern to match (e.g. '/v1/*')."`
 	Method          string `optional:"" help:"HTTP method to match (GET, POST, PUT, PATCH, DELETE)."`
-	AgentID         string `optional:"" name:"agent-id" help:"Agent ID to scope this rule to. Omit for all agents."`
 	RateLimit       *int   `optional:"" name:"rate-limit" help:"Max requests per window (required for rate_limit action)."`
 	RateLimitWindow string `optional:"" name:"rate-limit-window" help:"Time window: 'minute', 'hour', or 'day'."`
 	Enabled         bool   `optional:"" default:"true" help:"Enable rule immediately."`
@@ -94,10 +114,14 @@ func (c *OrgRulesCreateCmd) Run(out *output.Writer) error {
 			Method:          c.Method,
 			Action:          c.Action,
 			Enabled:         c.Enabled,
-			AgentID:         c.AgentID,
 			RateLimit:       c.RateLimit,
 			RateLimitWindow: c.RateLimitWindow,
 		}
+	}
+
+	// The server silently nulls agentId at org scope — reject loudly instead.
+	if input.AgentID != "" {
+		return fmt.Errorf("org rules are agent-less: agentId is not supported (use project-scoped 'onecli rules create --agent-id')")
 	}
 
 	if err := validateRuleInput(input.HostPattern, input.PathPattern, input.Method, input.AgentID, input.Action); err != nil {
@@ -130,9 +154,8 @@ type OrgRulesUpdateCmd struct {
 	HostPattern     string `optional:"" name:"host-pattern" help:"New host pattern."`
 	PathPattern     string `optional:"" name:"path-pattern" help:"New path pattern."`
 	Method          string `optional:"" help:"New HTTP method."`
-	Action          string `optional:"" help:"New action: 'block' or 'rate_limit'."`
+	Action          string `optional:"" help:"New action: 'block', 'rate_limit', 'manual_approval', or 'allow'."`
 	Enabled         *bool  `optional:"" help:"Enable or disable the rule."`
-	AgentID         string `optional:"" name:"agent-id" help:"New agent ID scope."`
 	RateLimit       *int   `optional:"" name:"rate-limit" help:"New max requests per window."`
 	RateLimitWindow string `optional:"" name:"rate-limit-window" help:"New time window."`
 	Json            string `optional:"" help:"Raw JSON payload. Overrides individual flags."`
@@ -168,15 +191,17 @@ func (c *OrgRulesUpdateCmd) Run(out *output.Writer) error {
 		if c.Enabled != nil {
 			input.Enabled = c.Enabled
 		}
-		if c.AgentID != "" {
-			input.AgentID = &c.AgentID
-		}
 		if c.RateLimit != nil {
 			input.RateLimit = c.RateLimit
 		}
 		if c.RateLimitWindow != "" {
 			input.RateLimitWindow = &c.RateLimitWindow
 		}
+	}
+
+	// The server ignores agentId at org scope — reject loudly instead.
+	if input.AgentID != nil && *input.AgentID != "" {
+		return fmt.Errorf("org rules are agent-less: agentId is not supported (use project-scoped 'onecli rules update --agent-id')")
 	}
 
 	var hostPattern, pathPattern, method, agentID, action string
@@ -279,6 +304,9 @@ func (c *OrgRulesPermissionsSetCmd) Run(out *output.Writer) error {
 	var input api.SetPermissionsInput
 	if err := json.Unmarshal([]byte(c.Json), &input); err != nil {
 		return fmt.Errorf("invalid JSON payload: %w", err)
+	}
+	if input.AgentID != "" {
+		return fmt.Errorf("agent-scoped permissions are project-only: org rules are agent-less (use 'onecli rules permissions set' with --agent-id)")
 	}
 	if len(input.Changes) == 0 {
 		return fmt.Errorf("'changes' array must contain at least one entry")

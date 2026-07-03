@@ -1,10 +1,8 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 
-	"github.com/onecli/onecli-cli/internal/api"
 	"github.com/onecli/onecli-cli/pkg/output"
 	"github.com/onecli/onecli-cli/pkg/validate"
 )
@@ -16,6 +14,7 @@ type OrgAppsCmd struct {
 	Configure  OrgAppsConfigureCmd  `cmd:"" help:"Save BYOC credentials for a provider at the org level."`
 	Remove     OrgAppsRemoveCmd     `cmd:"" help:"Remove BYOC credentials for a provider at the org level."`
 	Toggle     OrgAppsToggleCmd     `cmd:"" help:"Enable or disable an app config at the org level."`
+	Blocklist  OrgAppsBlocklistCmd  `cmd:"" help:"Manage an app's endpoint blocklist at the org level."`
 }
 
 // OrgAppsConfiguredCmd is `onecli org apps configured`.
@@ -58,44 +57,32 @@ func (c *OrgAppsGetCmd) Run(out *output.Writer) error {
 
 // OrgAppsConfigureCmd is `onecli org apps configure`.
 type OrgAppsConfigureCmd struct {
-	Provider     string `required:"" help:"Provider name (e.g. 'github', 'gmail')."`
-	ClientID     string `required:"" name:"client-id" help:"OAuth client ID."`
-	ClientSecret string `required:"" name:"client-secret" help:"OAuth client secret."`
-	Json         string `optional:"" help:"Raw JSON payload. Overrides individual flags."`
-	DryRun       bool   `optional:"" name:"dry-run" help:"Validate the request without executing it."`
+	Provider     string   `required:"" help:"Provider name (e.g. 'github', 'gmail')."`
+	Field        []string `optional:"" help:"Credential field as key=value (repeatable); names per the app's field definitions."`
+	ClientID     string   `optional:"" name:"client-id" help:"OAuth client ID (shorthand for --field clientId=...)."`
+	ClientSecret string   `optional:"" name:"client-secret" help:"OAuth client secret (shorthand for --field clientSecret=...)."`
+	Json         string   `optional:"" help:"Raw JSON object of credential fields. Merged first; flags override."`
+	DryRun       bool     `optional:"" name:"dry-run" help:"Validate the request without executing it."`
 }
 
 func (c *OrgAppsConfigureCmd) Run(out *output.Writer) error {
-	var input api.ConfigAppInput
-	if c.Json != "" {
-		if err := json.Unmarshal([]byte(c.Json), &input); err != nil {
-			return fmt.Errorf("invalid JSON payload: %w", err)
-		}
-	} else {
-		input = api.ConfigAppInput{
-			ClientID:     c.ClientID,
-			ClientSecret: c.ClientSecret,
-		}
-	}
-
 	if err := validate.ResourceID(c.Provider); err != nil {
 		return fmt.Errorf("invalid provider: %w", err)
 	}
+	fields, err := buildConfigFields(c.Json, c.Field, c.ClientID, c.ClientSecret)
+	if err != nil {
+		return err
+	}
 
 	if c.DryRun {
-		preview := map[string]string{
-			"provider":     c.Provider,
-			"clientId":     input.ClientID,
-			"clientSecret": "***",
-		}
-		return out.WriteDryRun("Would configure org app", preview)
+		return out.WriteDryRun("Would configure org app", maskedFieldPreview(c.Provider, fields))
 	}
 
 	client, err := newClient()
 	if err != nil {
 		return err
 	}
-	if err := client.UpsertOrgAppConfig(newContext(), c.Provider, input); err != nil {
+	if err := client.UpsertOrgAppConfig(newContext(), c.Provider, fields); err != nil {
 		return err
 	}
 	return out.Write(map[string]string{"status": "configured", "provider": c.Provider})

@@ -25,6 +25,16 @@ type Client struct {
 	httpClient *http.Client
 	prefix     string    // resolved API prefix: "/v1" or "/api"
 	prefixOnce sync.Once // ensures prefix detection runs once
+
+	// Project slug/id → resolved project id, cached per process. /v1 servers
+	// scope requests via the X-Project-Id header (ids, not slugs); the legacy
+	// ?projectId= query is kept alongside for old /api servers.
+	projectIDs   map[string]string
+	projectIDsMu sync.Mutex
+
+	connBase     string    // resolved project-connections base path
+	connEnvelope bool      // legacy base wraps list responses in {connections}
+	connOnce     sync.Once // ensures the connections probe runs once
 }
 
 // New creates an API client.
@@ -86,10 +96,38 @@ func withProjectQuery(basePath, projectID string) string {
 type APIError struct {
 	StatusCode int
 	Message    string
+	Type       string // server error type (e.g. "authentication_error"), when present
 }
 
 func (e *APIError) Error() string {
 	return e.Message
+}
+
+// parseAPIError extracts the server's message from either error shape: the
+// envelope {"error":{"message","type"}} (auth failures, ServiceErrors, 5xx)
+// or the flat {"error":"..."} used by route-level validation, falling back
+// to the HTTP status text.
+func parseAPIError(status int, body []byte) *APIError {
+	var envelope struct {
+		Error struct {
+			Message string `json:"message"`
+			Type    string `json:"type"`
+		} `json:"error"`
+	}
+	if json.Unmarshal(body, &envelope) == nil && envelope.Error.Message != "" {
+		return &APIError{
+			StatusCode: status,
+			Message:    envelope.Error.Message,
+			Type:       envelope.Error.Type,
+		}
+	}
+	var flat struct {
+		Error string `json:"error"`
+	}
+	if json.Unmarshal(body, &flat) == nil && flat.Error != "" {
+		return &APIError{StatusCode: status, Message: flat.Error}
+	}
+	return &APIError{StatusCode: status, Message: http.StatusText(status)}
 }
 
 // networkError translates raw Go network errors into user-friendly messages.
@@ -143,7 +181,83 @@ func (c *Client) applyPrefix(path string) string {
 // do executes an HTTP request and decodes the JSON response.
 // For 204 responses, result should be nil.
 func (c *Client) do(ctx context.Context, method, path string, body any, result any) error {
+	return c.doProject(ctx, method, path, "", body, result)
+}
+
+// resolveProjectID maps a project slug or id to the project id via
+// GET /v1/projects, cached per value for the process. Unresolvable values
+// (legacy servers without /v1/projects, unknown slugs, transient failures)
+// pass through as-is so the server rejects a bad selection loudly instead of
+// it being dropped. The lookup runs outside the cache lock — a duplicate
+// concurrent fetch is harmless.
+func (c *Client) resolveProjectID(ctx context.Context, project string) string {
+	c.projectIDsMu.Lock()
+	if c.projectIDs == nil {
+		c.projectIDs = map[string]string{}
+	}
+	if id, ok := c.projectIDs[project]; ok {
+		c.projectIDsMu.Unlock()
+		return id
+	}
+	c.projectIDsMu.Unlock()
+
+	id := project
+	var projects []Project
+	if err := c.do(ctx, http.MethodGet, "/v1/projects", nil, &projects); err == nil {
+		for _, p := range projects {
+			if p.ID == project || p.Slug == project {
+				id = p.ID
+				break
+			}
+		}
+	}
+
+	c.projectIDsMu.Lock()
+	c.projectIDs[project] = id
+	c.projectIDsMu.Unlock()
+	return id
+}
+
+// resolveConnectionsBase probes once for the top-level /v1/connections
+// resource. Older servers (pre connections promotion) 404 it and keep the
+// legacy /v1/apps/connections paths, whose list responses are wrapped in a
+// {connections} envelope. Mirrors the /v1-vs-/api prefix probe.
+func (c *Client) resolveConnectionsBase(ctx context.Context) (base string, envelope bool) {
+	c.connOnce.Do(func() {
+		c.connBase, c.connEnvelope = "/v1/connections", false
+		c.resolvePrefix(ctx)
+		req, err := http.NewRequestWithContext(
+			ctx, http.MethodGet, c.baseURL+c.applyPrefix("/v1/connections"), nil,
+		)
+		if err != nil {
+			return
+		}
+		if c.apiKey != "" {
+			req.Header.Set("Authorization", "Bearer "+c.apiKey)
+		}
+		resp, err := c.httpClient.Do(req)
+		if resp != nil {
+			_, _ = io.Copy(io.Discard, resp.Body)
+			resp.Body.Close()
+		}
+		if err == nil && resp.StatusCode == http.StatusNotFound {
+			c.connBase, c.connEnvelope = "/v1/apps/connections", true
+		}
+	})
+	return c.connBase, c.connEnvelope
+}
+
+// doProject executes a request scoped to an explicit project (slug or id).
+// The resolved project id is sent as X-Project-Id — how /v1 servers scope
+// requests — and the legacy ?projectId= query is kept alongside for old
+// /api servers. An empty project means "the API key's own project".
+func (c *Client) doProject(ctx context.Context, method, path, project string, body any, result any) error {
 	c.resolvePrefix(ctx)
+	var projectHeader string
+	if project != "" {
+		path = withProjectQuery(path, project)
+		projectHeader = c.resolveProjectID(ctx, project)
+	}
 	path = c.applyPrefix(path)
 	var bodyReader io.Reader
 	if body != nil {
@@ -161,6 +275,9 @@ func (c *Client) do(ctx context.Context, method, path string, body any, result a
 
 	if c.apiKey != "" {
 		req.Header.Set("Authorization", "Bearer "+c.apiKey)
+	}
+	if projectHeader != "" {
+		req.Header.Set("X-Project-Id", projectHeader)
 	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
@@ -182,13 +299,7 @@ func (c *Client) do(ctx context.Context, method, path string, body any, result a
 	}
 
 	if resp.StatusCode >= 400 {
-		var errResp struct {
-			Error string `json:"error"`
-		}
-		if json.Unmarshal(respBody, &errResp) == nil && errResp.Error != "" {
-			return &APIError{StatusCode: resp.StatusCode, Message: errResp.Error}
-		}
-		return &APIError{StatusCode: resp.StatusCode, Message: http.StatusText(resp.StatusCode)}
+		return parseAPIError(resp.StatusCode, respBody)
 	}
 
 	if result != nil {

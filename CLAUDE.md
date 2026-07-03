@@ -38,7 +38,7 @@ pkg/validate/        # Input hardening at command boundaries
 ## Shared Packages
 
 - `pkg/output` — all output goes through `output.Writer`. Never use `fmt.Print` or `os.Stdout`.
-- `pkg/exitcode` — exit codes and string codes. Map API 401 → AuthRequired, 404 → NotFound, 409 → Conflict.
+- `pkg/exitcode` — exit codes and string codes. Map API 401 → AuthRequired, 403 → Forbidden, 404 → NotFound, 409 → Conflict.
 - `pkg/validate` — validate resource IDs, URLs, API keys at command boundaries.
 
 ## Go Conventions

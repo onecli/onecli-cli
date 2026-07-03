@@ -6,4 +6,5 @@ type OrgCmd struct {
 	Rules       OrgRulesCmd       `cmd:"" help:"Manage org-scoped policy rules."`
 	Connections OrgConnectionsCmd `cmd:"" help:"Manage org-scoped connections."`
 	Apps        OrgAppsCmd        `cmd:"" help:"Manage org-scoped app configuration."`
+	Settings    OrgSettingsCmd    `cmd:"" help:"Manage organization settings (policy mode)."`
 }

@@ -6,11 +6,14 @@ import (
 	"net/http"
 )
 
-// Project represents a project returned by the API.
+// Project represents a project returned by the API. APIKey is only present
+// on the create response — surfaced because it is not retrievable afterwards
+// via the CLI.
 type Project struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
 	Slug      string `json:"slug"`
+	APIKey    string `json:"apiKey,omitempty"`
 	CreatedAt string `json:"createdAt"`
 }
 

@@ -20,8 +20,33 @@ type AuthCmd struct {
 	Login            AuthLoginCmd            `cmd:"" help:"Store API key for authentication."`
 	Logout           AuthLogoutCmd           `cmd:"" help:"Remove stored API key."`
 	Status           AuthStatusCmd           `cmd:"" help:"Show authentication status."`
+	Update           AuthUpdateCmd           `cmd:"" help:"Update your profile (display name)."`
 	ApiKey           AuthApiKeyCmd           `cmd:"api-key" help:"Show your current API key."`
 	RegenerateApiKey AuthRegenerateApiKeyCmd `cmd:"regenerate-api-key" help:"Regenerate your API key."`
+}
+
+// AuthUpdateCmd is `onecli auth update`.
+type AuthUpdateCmd struct {
+	Name   string `required:"" help:"New display name."`
+	DryRun bool   `optional:"" name:"dry-run" help:"Validate the request without executing it."`
+}
+
+func (c *AuthUpdateCmd) Run(out *output.Writer) error {
+	if c.Name == "" {
+		return fmt.Errorf("name must not be empty")
+	}
+	if c.DryRun {
+		return out.WriteDryRun("Would update profile", map[string]string{"name": c.Name})
+	}
+	client, err := newClient()
+	if err != nil {
+		return err
+	}
+	user, err := client.UpdateProfile(newContext(), c.Name)
+	if err != nil {
+		return err
+	}
+	return out.Write(user)
 }
 
 // AuthLoginCmd is `onecli auth login`.

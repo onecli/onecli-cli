@@ -8,14 +8,18 @@ import (
 
 // App represents an app from the /v1/apps endpoints.
 type App struct {
-	ID             string         `json:"id"`
-	Name           string         `json:"name"`
-	Available      bool           `json:"available"`
-	ConnectionType string         `json:"connectionType"`
-	Configurable   bool           `json:"configurable"`
-	Config         *AppConfig     `json:"config"`
-	Connection     *AppConnection `json:"connection"`
-	Hint           string         `json:"hint,omitempty"`
+	ID             string     `json:"id"`
+	Name           string     `json:"name"`
+	Available      bool       `json:"available"`
+	ConnectionType string     `json:"connectionType"`
+	Configurable   bool       `json:"configurable"`
+	Config         *AppConfig `json:"config"`
+	// Deprecated: first connection only — misleading for multi-account
+	// providers. Prefer Connections.
+	Connection      *AppConnection  `json:"connection"`
+	Connections     []AppConnection `json:"connections,omitempty"`
+	CredentialStubs []any           `json:"credentialStubs,omitempty"`
+	Hint            string          `json:"hint,omitempty"`
 }
 
 // AppConfig is the BYOC credential configuration status.
@@ -31,14 +35,15 @@ type AppConnection struct {
 	Label       string   `json:"label,omitempty"`
 	Status      string   `json:"status"`
 	Scopes      []string `json:"scopes"`
+	Scope       string   `json:"scope,omitempty"`
 	ConnectedAt string   `json:"connectedAt"`
 }
 
-// ConfigAppInput is the request body for saving BYOC credentials.
-type ConfigAppInput struct {
-	ClientID     string `json:"clientId"`
-	ClientSecret string `json:"clientSecret"`
-}
+// ConfigFields holds BYOC credential fields for a provider. Keys are
+// validated server-side against the app's own configurable field definitions
+// (e.g. clientId/clientSecret for OAuth apps; appId/appSlug/privateKey for
+// github-app) — unknown keys are stripped by the server.
+type ConfigFields map[string]string
 
 // ListApps returns all apps with their config and connection status.
 func (c *Client) ListApps(ctx context.Context) ([]App, error) {
@@ -58,40 +63,50 @@ func (c *Client) GetApp(ctx context.Context, provider string) (*App, error) {
 	return &app, nil
 }
 
-// ListConnections returns all app connections for the current project.
-func (c *Client) ListConnections(ctx context.Context) ([]AppConnection, error) {
-	var resp struct {
-		Connections []AppConnection `json:"connections"`
-	}
-	if err := c.do(ctx, http.MethodGet, "/v1/apps/connections", nil, &resp); err != nil {
-		return nil, fmt.Errorf("listing connections: %w", err)
-	}
-	return resp.Connections, nil
+// Project connection operations live in connections.go (top-level
+// /v1/connections resource with a legacy-path fallback).
+
+// AppTool is one operation in an app's permission catalog.
+type AppTool struct {
+	ID            string   `json:"id"`
+	Name          string   `json:"name"`
+	Description   string   `json:"description"`
+	HostPattern   string   `json:"hostPattern"`
+	PathPattern   string   `json:"pathPattern"`
+	AliasPatterns []string `json:"aliasPatterns,omitempty"`
+	Method        string   `json:"method,omitempty"`
+	Methods       []string `json:"methods,omitempty"`
 }
 
-// ListConnectionsByProvider returns app connections for a specific provider.
-func (c *Client) ListConnectionsByProvider(ctx context.Context, provider string) ([]AppConnection, error) {
-	var resp struct {
-		Connections []AppConnection `json:"connections"`
-	}
-	if err := c.do(ctx, http.MethodGet, "/v1/apps/connections/"+provider, nil, &resp); err != nil {
-		return nil, fmt.Errorf("listing connections for %s: %w", provider, err)
-	}
-	return resp.Connections, nil
+// AppToolGroup groups an app's tools by read/write category, optionally with
+// a wildcard tool covering the whole group.
+type AppToolGroup struct {
+	Category string    `json:"category"`
+	Tools    []AppTool `json:"tools"`
+	Wildcard *AppTool  `json:"wildcard,omitempty"`
 }
 
-// DisconnectApp removes an app connection by ID.
-func (c *Client) DisconnectApp(ctx context.Context, connectionID string) error {
-	if err := c.do(ctx, http.MethodDelete, "/v1/apps/connections/"+connectionID, nil, nil); err != nil {
-		return fmt.Errorf("disconnecting app: %w", err)
+// PermissionDefinition is an app's static tool catalog — the toolIds that
+// rules permissions get/set operate on.
+type PermissionDefinition struct {
+	Provider string         `json:"provider"`
+	Groups   []AppToolGroup `json:"groups"`
+}
+
+// GetPermissionDefinition returns an app's permission catalog. Works without
+// a project context (the catalog is global static data).
+func (c *Client) GetPermissionDefinition(ctx context.Context, provider string) (*PermissionDefinition, error) {
+	var def PermissionDefinition
+	if err := c.do(ctx, http.MethodGet, "/v1/apps/"+provider+"/permission-definition", nil, &def); err != nil {
+		return nil, fmt.Errorf("getting permission definition: %w", err)
 	}
-	return nil
+	return &def, nil
 }
 
 // ConfigureApp saves BYOC credentials for a provider.
-func (c *Client) ConfigureApp(ctx context.Context, provider string, input ConfigAppInput) error {
+func (c *Client) ConfigureApp(ctx context.Context, provider string, fields ConfigFields) error {
 	var resp SuccessResponse
-	if err := c.do(ctx, http.MethodPost, "/v1/apps/"+provider+"/config", input, &resp); err != nil {
+	if err := c.do(ctx, http.MethodPost, "/v1/apps/"+provider+"/config", fields, &resp); err != nil {
 		return fmt.Errorf("configuring app: %w", err)
 	}
 	return nil

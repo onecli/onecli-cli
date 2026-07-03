@@ -8,8 +8,9 @@ import (
 
 // OrgAppConfig is the config status for an org-scoped app provider.
 type OrgAppConfig struct {
-	HasCredentials bool `json:"hasCredentials"`
-	Enabled        bool `json:"enabled"`
+	Settings       map[string]string `json:"settings,omitempty"`
+	HasCredentials bool              `json:"hasCredentials"`
+	Enabled        bool              `json:"enabled"`
 }
 
 // ToggleInput is the request body for toggling app config.
@@ -36,9 +37,9 @@ func (c *Client) GetOrgAppConfig(ctx context.Context, provider string) (*OrgAppC
 }
 
 // UpsertOrgAppConfig saves BYOC credentials for a provider at the org level.
-func (c *Client) UpsertOrgAppConfig(ctx context.Context, provider string, input ConfigAppInput) error {
+func (c *Client) UpsertOrgAppConfig(ctx context.Context, provider string, fields ConfigFields) error {
 	var resp SuccessResponse
-	if err := c.do(ctx, http.MethodPost, "/v1/org/apps/"+provider+"/config", input, &resp); err != nil {
+	if err := c.do(ctx, http.MethodPost, "/v1/org/apps/"+provider+"/config", fields, &resp); err != nil {
 		return fmt.Errorf("configuring org app: %w", err)
 	}
 	return nil
