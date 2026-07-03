@@ -11,11 +11,154 @@ import (
 
 // RulesCmd is the `onecli rules` command group.
 type RulesCmd struct {
-	List   RulesListCmd   `cmd:"" help:"List all policy rules."`
-	Get    RulesGetCmd    `cmd:"" help:"Get a single policy rule by ID."`
-	Create RulesCreateCmd `cmd:"" help:"Create a new policy rule."`
-	Update RulesUpdateCmd `cmd:"" help:"Update an existing policy rule."`
-	Delete RulesDeleteCmd `cmd:"" help:"Delete a policy rule."`
+	List        RulesListCmd        `cmd:"" help:"List all policy rules."`
+	Get         RulesGetCmd         `cmd:"" help:"Get a single policy rule by ID."`
+	Create      RulesCreateCmd      `cmd:"" help:"Create a new policy rule."`
+	Update      RulesUpdateCmd      `cmd:"" help:"Update an existing policy rule."`
+	Delete      RulesDeleteCmd      `cmd:"" help:"Delete a policy rule."`
+	Permissions RulesPermissionsCmd `cmd:"" help:"Manage app-level tool permissions (supports per-agent overrides)."`
+	Overlap     RulesOverlapCmd     `cmd:"" help:"Count custom rules overlapping an app's hosts."`
+}
+
+// RulesPermissionsCmd is `onecli rules permissions`.
+type RulesPermissionsCmd struct {
+	Get RulesPermissionsGetCmd `cmd:"" help:"Get layered tool permissions for a provider."`
+	Set RulesPermissionsSetCmd `cmd:"" help:"Set tool permissions for a provider (optionally for one agent)."`
+}
+
+// RulesPermissionsGetCmd is `onecli rules permissions get`.
+type RulesPermissionsGetCmd struct {
+	Provider string `required:"" help:"Provider name (e.g. 'github', 'gmail')."`
+	AgentID  string `optional:"" name:"agent-id" help:"Show only this agent's override layer."`
+	Fields   string `optional:"" help:"Comma-separated list of fields to include in output."`
+}
+
+func (c *RulesPermissionsGetCmd) Run(out *output.Writer) error {
+	if err := validate.ResourceID(c.Provider); err != nil {
+		return fmt.Errorf("invalid provider: %w", err)
+	}
+	client, err := newClient()
+	if err != nil {
+		return err
+	}
+	states, err := client.GetRulePermissions(newContext(), c.Provider)
+	if err != nil {
+		return err
+	}
+	if c.AgentID != "" {
+		if err := validate.ResourceID(c.AgentID); err != nil {
+			return fmt.Errorf("invalid agent-id: %w", err)
+		}
+		layer := states.ByAgent[c.AgentID]
+		if layer == nil {
+			layer = map[string]api.PermissionState{}
+		}
+		return out.WriteFiltered(map[string]any{
+			"agentId":   c.AgentID,
+			"overrides": layer,
+			"defaults":  states.Defaults,
+		}, c.Fields)
+	}
+	return out.WriteFiltered(states, c.Fields)
+}
+
+// RulesPermissionsSetCmd is `onecli rules permissions set`.
+type RulesPermissionsSetCmd struct {
+	Provider   string `required:"" help:"Provider name (e.g. 'github', 'gmail')."`
+	Tool       string `optional:"" help:"Tool ID to change (see 'onecli apps permission-definition'). Alternative to --json."`
+	Permission string `optional:"" help:"Permission: 'allow', 'manual_approval', 'block', or 'inherit' (agent layer only)."`
+	AgentID    string `optional:"" name:"agent-id" help:"Target one agent's override layer instead of the all-agents defaults."`
+	Conditions string `optional:"" help:"Content conditions as a JSON array."`
+	Json       string `optional:"" help:"Raw JSON payload with 'changes' array of {toolId, permission}. Overrides --tool/--permission/--conditions."`
+	DryRun     bool   `optional:"" name:"dry-run" help:"Validate the request without executing it."`
+}
+
+func (c *RulesPermissionsSetCmd) Run(out *output.Writer) error {
+	if err := validate.ResourceID(c.Provider); err != nil {
+		return fmt.Errorf("invalid provider: %w", err)
+	}
+
+	var input api.SetPermissionsInput
+	if c.Json != "" {
+		if err := json.Unmarshal([]byte(c.Json), &input); err != nil {
+			return fmt.Errorf("invalid JSON payload: %w", err)
+		}
+	} else {
+		if c.Tool == "" || c.Permission == "" {
+			return fmt.Errorf("provide --tool and --permission, or a raw --json payload")
+		}
+		conditions, err := parseConditions(c.Conditions)
+		if err != nil {
+			return err
+		}
+		input.Changes = []api.PermissionChange{{ToolID: c.Tool, Permission: c.Permission}}
+		for _, cond := range conditions {
+			input.Conditions = append(input.Conditions, cond)
+		}
+	}
+	if c.AgentID != "" {
+		if err := validate.ResourceID(c.AgentID); err != nil {
+			return fmt.Errorf("invalid agent-id: %w", err)
+		}
+		input.AgentID = c.AgentID
+	}
+
+	if len(input.Changes) == 0 {
+		return fmt.Errorf("'changes' array must contain at least one entry")
+	}
+	for _, ch := range input.Changes {
+		if ch.ToolID == "" {
+			return fmt.Errorf("each change must have a non-empty 'toolId'")
+		}
+		if !validPermissionSettings[ch.Permission] {
+			return fmt.Errorf("invalid permission %q for tool %q: must be 'allow', 'manual_approval', 'block', or 'inherit'", ch.Permission, ch.ToolID)
+		}
+		if ch.Permission == "inherit" && input.AgentID == "" {
+			return fmt.Errorf("'inherit' removes an agent's override and requires --agent-id")
+		}
+	}
+
+	if c.DryRun {
+		return out.WriteDryRun("Would set rule permissions", map[string]any{"provider": c.Provider, "input": input})
+	}
+
+	client, err := newClient()
+	if err != nil {
+		return err
+	}
+	if err := client.SetRulePermissions(newContext(), c.Provider, input); err != nil {
+		return err
+	}
+	return out.Write(map[string]string{"status": "updated", "provider": c.Provider})
+}
+
+// validPermissionSettings mirrors the server's project permission enum
+// (org excludes "inherit" — enforced in the org command).
+var validPermissionSettings = map[string]bool{
+	"allow":           true,
+	"manual_approval": true,
+	"block":           true,
+	"inherit":         true,
+}
+
+// RulesOverlapCmd is `onecli rules overlap`.
+type RulesOverlapCmd struct {
+	Provider string `required:"" help:"Provider name (e.g. 'github', 'gmail')."`
+}
+
+func (c *RulesOverlapCmd) Run(out *output.Writer) error {
+	if err := validate.ResourceID(c.Provider); err != nil {
+		return fmt.Errorf("invalid provider: %w", err)
+	}
+	client, err := newClient()
+	if err != nil {
+		return err
+	}
+	count, err := client.GetRuleOverlap(newContext(), c.Provider)
+	if err != nil {
+		return err
+	}
+	return out.Write(count)
 }
 
 // RulesListCmd is `onecli rules list`.
@@ -74,13 +217,14 @@ type RulesCreateCmd struct {
 	Project         string `optional:"" short:"p" help:"Project slug."`
 	Name            string `required:"" help:"Display name for the rule."`
 	HostPattern     string `required:"" name:"host-pattern" help:"Host pattern to match (e.g. 'api.anthropic.com')."`
-	Action          string `required:"" help:"Action to take: 'block' or 'rate_limit'."`
+	Action          string `required:"" help:"Action to take: 'block', 'rate_limit', 'manual_approval', or 'allow'."`
 	PathPattern     string `optional:"" name:"path-pattern" help:"Path pattern to match (e.g. '/v1/*')."`
 	Method          string `optional:"" help:"HTTP method to match (GET, POST, PUT, PATCH, DELETE)."`
 	AgentID         string `optional:"" name:"agent-id" help:"Agent ID to scope this rule to. Omit for all agents."`
 	RateLimit       *int   `optional:"" name:"rate-limit" help:"Max requests per window (required for rate_limit action)."`
 	RateLimitWindow string `optional:"" name:"rate-limit-window" help:"Time window: 'minute', 'hour', or 'day'."`
 	Enabled         bool   `optional:"" default:"true" help:"Enable rule immediately."`
+	Conditions      string `optional:"" help:"Content conditions as a JSON array, e.g. '[{\"target\":\"body\",\"operator\":\"contains\",\"value\":\"x\"}]'."`
 	Json            string `optional:"" help:"Raw JSON payload. Overrides individual flags."`
 	DryRun          bool   `optional:"" name:"dry-run" help:"Validate the request without executing it."`
 }
@@ -92,6 +236,10 @@ func (c *RulesCreateCmd) Run(out *output.Writer) error {
 			return fmt.Errorf("invalid JSON payload: %w", err)
 		}
 	} else {
+		conditions, err := parseConditions(c.Conditions)
+		if err != nil {
+			return err
+		}
 		input = api.CreateRuleInput{
 			Name:            c.Name,
 			HostPattern:     c.HostPattern,
@@ -102,6 +250,7 @@ func (c *RulesCreateCmd) Run(out *output.Writer) error {
 			AgentID:         c.AgentID,
 			RateLimit:       c.RateLimit,
 			RateLimitWindow: c.RateLimitWindow,
+			Conditions:      conditions,
 		}
 	}
 
@@ -139,11 +288,12 @@ type RulesUpdateCmd struct {
 	HostPattern     string `optional:"" name:"host-pattern" help:"New host pattern."`
 	PathPattern     string `optional:"" name:"path-pattern" help:"New path pattern."`
 	Method          string `optional:"" help:"New HTTP method."`
-	Action          string `optional:"" help:"New action: 'block' or 'rate_limit'."`
+	Action          string `optional:"" help:"New action: 'block', 'rate_limit', 'manual_approval', or 'allow'."`
 	Enabled         *bool  `optional:"" help:"Enable or disable the rule."`
 	AgentID         string `optional:"" name:"agent-id" help:"New agent ID scope."`
 	RateLimit       *int   `optional:"" name:"rate-limit" help:"New max requests per window."`
 	RateLimitWindow string `optional:"" name:"rate-limit-window" help:"New time window."`
+	Conditions      string `optional:"" help:"New content conditions as a JSON array; '[]' clears existing conditions."`
 	Json            string `optional:"" help:"Raw JSON payload. Overrides individual flags."`
 	DryRun          bool   `optional:"" name:"dry-run" help:"Validate the request without executing it."`
 }
@@ -185,6 +335,13 @@ func (c *RulesUpdateCmd) Run(out *output.Writer) error {
 		}
 		if c.RateLimitWindow != "" {
 			input.RateLimitWindow = &c.RateLimitWindow
+		}
+		if c.Conditions != "" {
+			conditions, err := parseConditions(c.Conditions)
+			if err != nil {
+				return err
+			}
+			input.Conditions = &conditions
 		}
 	}
 
@@ -274,8 +431,28 @@ func validateRuleInput(hostPattern, pathPattern, method, agentID, action string)
 			return fmt.Errorf("invalid agent-id: %w", err)
 		}
 	}
-	if action != "" && action != "block" && action != "rate_limit" {
-		return fmt.Errorf("invalid action %q: must be 'block' or 'rate_limit'", action)
+	if action != "" && !validRuleActions[action] {
+		return fmt.Errorf("invalid action %q: must be one of 'block', 'rate_limit', 'manual_approval', 'allow'", action)
 	}
 	return nil
+}
+
+// validRuleActions mirrors the server's policy-rule action enum.
+var validRuleActions = map[string]bool{
+	"block":           true,
+	"rate_limit":      true,
+	"manual_approval": true,
+	"allow":           true,
+}
+
+// parseConditions decodes a --conditions JSON array flag into rule conditions.
+func parseConditions(raw string) ([]api.RuleCondition, error) {
+	if raw == "" {
+		return nil, nil
+	}
+	var conditions []api.RuleCondition
+	if err := json.Unmarshal([]byte(raw), &conditions); err != nil {
+		return nil, fmt.Errorf(`invalid --conditions (expected JSON array like [{"target":"body","operator":"contains","value":"x"}]): %w`, err)
+	}
+	return conditions, nil
 }

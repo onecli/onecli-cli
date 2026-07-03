@@ -29,7 +29,9 @@ type CLI struct {
 	Apps     AppsCmd     `cmd:"" help:"Manage app connections."`
 	Rules    RulesCmd    `cmd:"" help:"Manage policy rules."`
 	Projects ProjectsCmd `cmd:"" help:"Manage projects."`
-	Org      OrgCmd      `cmd:"" help:"Organization-scoped management (secrets, rules, connections, apps)."`
+	Org      OrgCmd      `cmd:"" help:"Organization-scoped management (secrets, rules, connections, apps, settings)."`
+	Vaults   VaultsCmd   `cmd:"" help:"List external vault connections."`
+	Counts   CountsCmd   `cmd:"" help:"Show the project's resource counts."`
 	Auth     AuthCmd     `cmd:"" help:"Manage authentication."`
 	Config   ConfigCmd   `cmd:"" help:"Manage configuration settings."`
 	Migrate  MigrateCmd  `cmd:"" help:"Migrate data to OneCLI Cloud."`
@@ -85,6 +87,9 @@ func handleError(out *output.Writer, err error) {
 		case 401:
 			_ = out.ErrorWithAction(exitcode.CodeAuthRequired, apiErr.Message, "onecli auth login")
 			os.Exit(exitcode.AuthRequired)
+		case 403:
+			_ = out.Error(exitcode.CodeForbidden, apiErr.Message)
+			os.Exit(exitcode.Forbidden)
 		case 404:
 			_ = out.Error(exitcode.CodeNotFound, apiErr.Message)
 			os.Exit(exitcode.NotFound)

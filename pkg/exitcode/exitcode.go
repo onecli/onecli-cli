@@ -6,6 +6,7 @@ const (
 	AuthRequired = 2
 	NotFound     = 3
 	Conflict     = 4
+	Forbidden    = 5
 )
 
 // String codes for JSON error responses (used with output.Error).
@@ -14,4 +15,5 @@ const (
 	CodeAuthRequired = "AUTH_REQUIRED"
 	CodeNotFound     = "NOT_FOUND"
 	CodeConflict     = "CONFLICT"
+	CodeForbidden    = "FORBIDDEN"
 )

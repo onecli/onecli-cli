@@ -14,6 +14,7 @@ import (
 type AgentsCmd struct {
 	List            AgentsListCmd            `cmd:"" help:"List all agents."`
 	GetDefault      AgentsGetDefaultCmd      `cmd:"" name:"get-default" help:"Get the default agent."`
+	SetDefault      AgentsSetDefaultCmd      `cmd:"" name:"set-default" help:"Mark an agent as the project default."`
 	Create          AgentsCreateCmd          `cmd:"" help:"Create a new agent."`
 	Delete          AgentsDeleteCmd          `cmd:"" help:"Delete an agent."`
 	Rename          AgentsRenameCmd          `cmd:"" help:"Rename an agent."`
@@ -21,6 +22,107 @@ type AgentsCmd struct {
 	Secrets         AgentsSecretsCmd         `cmd:"" help:"List secrets assigned to an agent."`
 	SetSecrets      AgentsSetSecretsCmd      `cmd:"" name:"set-secrets" help:"Set secrets assigned to an agent."`
 	SetSecretMode   AgentsSetSecretModeCmd   `cmd:"" name:"set-secret-mode" help:"Set an agent's secret mode."`
+	GranularAccess  AgentsGranularAccessCmd  `cmd:"" name:"granular-access" help:"Show per-agent granular-access policies across the project."`
+	Connections     AgentsConnectionsCmd     `cmd:"" help:"Manage an agent's app-connection assignments."`
+}
+
+// AgentsSetDefaultCmd is `onecli agents set-default`.
+type AgentsSetDefaultCmd struct {
+	ID     string `required:"" help:"ID of the agent."`
+	DryRun bool   `optional:"" name:"dry-run" help:"Validate the request without executing it."`
+}
+
+func (c *AgentsSetDefaultCmd) Run(out *output.Writer) error {
+	if err := validate.ResourceID(c.ID); err != nil {
+		return fmt.Errorf("invalid agent ID: %w", err)
+	}
+	if c.DryRun {
+		return out.WriteDryRun("Would set default agent", map[string]string{"id": c.ID})
+	}
+	client, err := newClient()
+	if err != nil {
+		return err
+	}
+	if err := client.SetDefaultAgent(newContext(), c.ID); err != nil {
+		return err
+	}
+	return out.Write(map[string]string{"status": "default", "id": c.ID})
+}
+
+// AgentsGranularAccessCmd is `onecli agents granular-access`.
+type AgentsGranularAccessCmd struct {
+	Fields string `optional:"" help:"Comma-separated list of fields to include in output."`
+	Quiet  string `optional:"" name:"quiet" help:"Output only the specified field, one per line."`
+}
+
+func (c *AgentsGranularAccessCmd) Run(out *output.Writer) error {
+	client, err := newClient()
+	if err != nil {
+		return err
+	}
+	entries, err := client.ListGranularAccess(newContext())
+	if err != nil {
+		return err
+	}
+	if c.Quiet != "" {
+		return out.WriteQuiet(entries, c.Quiet)
+	}
+	return out.WriteFiltered(entries, c.Fields)
+}
+
+// AgentsConnectionsCmd is the `onecli agents connections` command group.
+type AgentsConnectionsCmd struct {
+	Get AgentsConnectionsGetCmd `cmd:"" help:"Get an agent's app-connection assignments."`
+	Set AgentsConnectionsSetCmd `cmd:"" help:"Replace an agent's app-connection assignments (raw JSON)."`
+}
+
+// AgentsConnectionsGetCmd is `onecli agents connections get`.
+type AgentsConnectionsGetCmd struct {
+	ID     string `required:"" help:"ID of the agent."`
+	Fields string `optional:"" help:"Comma-separated list of fields to include in output."`
+}
+
+func (c *AgentsConnectionsGetCmd) Run(out *output.Writer) error {
+	if err := validate.ResourceID(c.ID); err != nil {
+		return fmt.Errorf("invalid agent ID: %w", err)
+	}
+	client, err := newClient()
+	if err != nil {
+		return err
+	}
+	connections, err := client.GetAgentConnections(newContext(), c.ID)
+	if err != nil {
+		return err
+	}
+	return out.WriteFiltered(connections, c.Fields)
+}
+
+// AgentsConnectionsSetCmd is `onecli agents connections set`.
+type AgentsConnectionsSetCmd struct {
+	ID     string `required:"" help:"ID of the agent."`
+	Json   string `required:"" help:"JSON array of connection assignments (the API's 'connections' array, incl. optional granular-access policies)."`
+	DryRun bool   `optional:"" name:"dry-run" help:"Validate the request without executing it."`
+}
+
+func (c *AgentsConnectionsSetCmd) Run(out *output.Writer) error {
+	if err := validate.ResourceID(c.ID); err != nil {
+		return fmt.Errorf("invalid agent ID: %w", err)
+	}
+	var connections []any
+	if err := json.Unmarshal([]byte(c.Json), &connections); err != nil {
+		return fmt.Errorf("invalid JSON payload (expected an array): %w", err)
+	}
+	if c.DryRun {
+		return out.WriteDryRun("Would set agent connections", map[string]any{"id": c.ID, "connections": connections})
+	}
+	client, err := newClient()
+	if err != nil {
+		return err
+	}
+	if err := client.SetAgentConnections(newContext(), c.ID, connections); err != nil {
+		return err
+	}
+	return out.Write(map[string]any{"status": "updated", "id": c.ID, "connectionCount": len(connections)})
 }
 
 // AgentsListCmd is `onecli agents list`.

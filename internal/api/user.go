@@ -28,6 +28,16 @@ func (c *Client) GetUser(ctx context.Context) (*User, error) {
 	return &user, nil
 }
 
+// UpdateProfile updates the authenticated user's display name.
+func (c *Client) UpdateProfile(ctx context.Context, name string) (*User, error) {
+	var user User
+	body := map[string]string{"name": name}
+	if err := c.do(ctx, http.MethodPatch, "/v1/user", body, &user); err != nil {
+		return nil, fmt.Errorf("updating profile: %w", err)
+	}
+	return &user, nil
+}
+
 // GetAPIKey returns the authenticated user's API key.
 func (c *Client) GetAPIKey(ctx context.Context) (*APIKeyResponse, error) {
 	var resp APIKeyResponse

@@ -73,6 +73,17 @@ func (cmd *HelpCmd) Run(out *output.Writer) error {
 				{Name: "--id", Required: true, Description: "ID of the agent."},
 				{Name: "--secret-ids", Required: true, Description: "Comma-separated list of secret IDs."},
 			}},
+			{Name: "agents set-default", Description: "Mark an agent as the project default.", Args: []ArgInfo{
+				{Name: "--id", Required: true, Description: "ID of the agent."},
+			}},
+			{Name: "agents granular-access", Description: "Show per-agent granular-access policies across the project."},
+			{Name: "agents connections get", Description: "Get an agent's app-connection assignments.", Args: []ArgInfo{
+				{Name: "--id", Required: true, Description: "ID of the agent."},
+			}},
+			{Name: "agents connections set", Description: "Replace an agent's app-connection assignments.", Args: []ArgInfo{
+				{Name: "--id", Required: true, Description: "ID of the agent."},
+				{Name: "--json", Required: true, Description: "JSON array of connection assignments."},
+			}},
 			{Name: "agents set-secret-mode", Description: "Set an agent's secret mode.", Args: []ArgInfo{
 				{Name: "--id", Required: true, Description: "ID of the agent."},
 				{Name: "--mode", Required: true, Description: "Secret mode: 'all' or 'selective'."},
@@ -97,16 +108,58 @@ func (cmd *HelpCmd) Run(out *output.Writer) error {
 			{Name: "apps get", Description: "Get a single app with setup guidance.", Args: []ArgInfo{
 				{Name: "--provider", Required: true, Description: "Provider name (e.g. 'github', 'gmail')."},
 			}},
-			{Name: "apps configure", Description: "Save OAuth credentials (BYOC) for a provider.", Args: []ArgInfo{
+			{Name: "apps configure", Description: "Save credentials (BYOC) for a provider.", Args: []ArgInfo{
 				{Name: "--provider", Required: true, Description: "Provider name (e.g. 'github', 'gmail')."},
-				{Name: "--client-id", Required: true, Description: "OAuth client ID."},
-				{Name: "--client-secret", Required: true, Description: "OAuth client secret."},
+				{Name: "--field", Description: "Credential field as key=value (repeatable); names per the app's field definitions."},
+				{Name: "--client-id", Description: "OAuth client ID (shorthand for --field clientId=...)."},
+				{Name: "--client-secret", Description: "OAuth client secret (shorthand for --field clientSecret=...)."},
+				{Name: "--json", Description: "Raw JSON object of credential fields."},
 			}},
-			{Name: "apps remove", Description: "Remove OAuth credentials for a provider.", Args: []ArgInfo{
+			{Name: "apps remove", Description: "Remove BYOC credentials for a provider.", Args: []ArgInfo{
 				{Name: "--provider", Required: true, Description: "Provider name (e.g. 'github', 'gmail')."},
 			}},
 			{Name: "apps disconnect", Description: "Disconnect an app connection.", Args: []ArgInfo{
 				{Name: "--provider", Required: true, Description: "Provider name (e.g. 'github', 'gmail')."},
+			}},
+			{Name: "apps connections list", Description: "List app connections, optionally filtered by provider.", Args: []ArgInfo{
+				{Name: "--provider", Description: "Filter by provider name."},
+			}},
+			{Name: "apps connections rename", Description: "Rename an app connection.", Args: []ArgInfo{
+				{Name: "--id", Required: true, Description: "ID of the connection."},
+				{Name: "--label", Required: true, Description: "New display label."},
+			}},
+			{Name: "apps permission-definition", Description: "Show an app's tool catalog (groups + toolIds) for permission rules.", Args: []ArgInfo{
+				{Name: "--provider", Required: true, Description: "Provider name (e.g. 'github', 'gmail')."},
+			}},
+			{Name: "apps config get", Description: "Get config status for a provider.", Args: []ArgInfo{
+				{Name: "--provider", Required: true, Description: "Provider name."},
+			}},
+			{Name: "apps config toggle", Description: "Enable or disable a provider's config.", Args: []ArgInfo{
+				{Name: "--provider", Required: true, Description: "Provider name."},
+				{Name: "--enabled", Required: true, Description: "Set to true to enable, false to disable."},
+			}},
+			{Name: "apps configured", Description: "List providers with an enabled config."},
+			{Name: "apps env-defaults", Description: "List providers with platform default credentials."},
+			{Name: "apps blocklist list", Description: "Show blocklist state for a provider.", Args: []ArgInfo{
+				{Name: "--provider", Required: true, Description: "Provider name."},
+			}},
+			{Name: "apps blocklist activate", Description: "Activate a predefined blocklist host.", Args: []ArgInfo{
+				{Name: "--provider", Required: true, Description: "Provider name."},
+				{Name: "--host-id", Required: true, Description: "Predefined blocklist host ID."},
+			}},
+			{Name: "apps blocklist add", Description: "Add a custom blocklist rule.", Args: []ArgInfo{
+				{Name: "--provider", Required: true, Description: "Provider name."},
+				{Name: "--name", Required: true, Description: "Display name for the rule."},
+				{Name: "--host-pattern", Required: true, Description: "Host pattern to block."},
+			}},
+			{Name: "apps blocklist toggle", Description: "Enable or disable a blocklist rule.", Args: []ArgInfo{
+				{Name: "--provider", Required: true, Description: "Provider name."},
+				{Name: "--rule-id", Required: true, Description: "Blocklist rule ID."},
+				{Name: "--enabled", Required: true, Description: "Set to true to enable, false to disable."},
+			}},
+			{Name: "apps blocklist remove", Description: "Remove a blocklist rule.", Args: []ArgInfo{
+				{Name: "--provider", Required: true, Description: "Provider name."},
+				{Name: "--rule-id", Required: true, Description: "Blocklist rule ID."},
 			}},
 			{Name: "rules list", Description: "List all policy rules.", Args: []ArgInfo{
 				{Name: "--project, -p", Description: "Project slug."},
@@ -115,13 +168,28 @@ func (cmd *HelpCmd) Run(out *output.Writer) error {
 				{Name: "--project, -p", Description: "Project slug."},
 				{Name: "--name", Required: true, Description: "Display name for the rule."},
 				{Name: "--host-pattern", Required: true, Description: "Host pattern to match."},
-				{Name: "--action", Required: true, Description: "Action: 'block' or 'rate_limit'."},
+				{Name: "--action", Required: true, Description: "Action: 'block', 'rate_limit', 'manual_approval', or 'allow'."},
+				{Name: "--conditions", Description: "Content conditions as a JSON array."},
 			}},
 			{Name: "rules update", Description: "Update an existing policy rule.", Args: []ArgInfo{
 				{Name: "--id", Required: true, Description: "ID of the rule to update."},
 			}},
 			{Name: "rules delete", Description: "Delete a policy rule.", Args: []ArgInfo{
 				{Name: "--id", Required: true, Description: "ID of the rule to delete."},
+			}},
+			{Name: "rules permissions get", Description: "Get layered tool permissions for a provider.", Args: []ArgInfo{
+				{Name: "--provider", Required: true, Description: "Provider name (e.g. 'github', 'gmail')."},
+				{Name: "--agent-id", Description: "Show only this agent's override layer."},
+			}},
+			{Name: "rules permissions set", Description: "Set tool permissions for a provider (optionally per agent).", Args: []ArgInfo{
+				{Name: "--provider", Required: true, Description: "Provider name (e.g. 'github', 'gmail')."},
+				{Name: "--tool", Description: "Tool ID (see 'apps permission-definition')."},
+				{Name: "--permission", Description: "Permission: 'allow', 'manual_approval', 'block', or 'inherit' (agent layer only)."},
+				{Name: "--agent-id", Description: "Target one agent's override layer."},
+				{Name: "--json", Description: "Raw JSON payload with 'changes' array."},
+			}},
+			{Name: "rules overlap", Description: "Count custom rules overlapping an app's hosts.", Args: []ArgInfo{
+				{Name: "--provider", Required: true, Description: "Provider name."},
 			}},
 			{Name: "projects list", Description: "List all projects."},
 			{Name: "projects get", Description: "Get a single project by ID.", Args: []ArgInfo{
@@ -157,7 +225,7 @@ func (cmd *HelpCmd) Run(out *output.Writer) error {
 			{Name: "org rules create", Description: "Create a new org-scoped policy rule.", Args: []ArgInfo{
 				{Name: "--name", Required: true, Description: "Display name for the rule."},
 				{Name: "--host-pattern", Required: true, Description: "Host pattern to match."},
-				{Name: "--action", Required: true, Description: "Action: 'block' or 'rate_limit'."},
+				{Name: "--action", Required: true, Description: "Action: 'block', 'rate_limit', 'manual_approval', or 'allow'."},
 			}},
 			{Name: "org rules update", Description: "Update an org-scoped policy rule.", Args: []ArgInfo{
 				{Name: "--id", Required: true, Description: "ID of the rule to update."},
@@ -172,8 +240,15 @@ func (cmd *HelpCmd) Run(out *output.Writer) error {
 				{Name: "--provider", Required: true, Description: "Provider name (e.g. 'github', 'gmail')."},
 				{Name: "--json", Required: true, Description: "JSON payload with 'changes' array."},
 			}},
+			{Name: "org rules overlap", Description: "Count custom org rules overlapping an app's hosts.", Args: []ArgInfo{
+				{Name: "--provider", Required: true, Description: "Provider name."},
+			}},
 			{Name: "org connections list", Description: "List all org-scoped connections.", Args: []ArgInfo{
 				{Name: "--provider", Description: "Filter by provider name."},
+			}},
+			{Name: "org connections rename", Description: "Rename an org-scoped connection.", Args: []ArgInfo{
+				{Name: "--id", Required: true, Description: "ID of the connection."},
+				{Name: "--label", Required: true, Description: "New display label."},
 			}},
 			{Name: "org connections delete", Description: "Delete an org-scoped connection.", Args: []ArgInfo{
 				{Name: "--id", Required: true, Description: "ID of the connection to delete."},
@@ -184,8 +259,10 @@ func (cmd *HelpCmd) Run(out *output.Writer) error {
 			}},
 			{Name: "org apps configure", Description: "Save BYOC credentials at the org level.", Args: []ArgInfo{
 				{Name: "--provider", Required: true, Description: "Provider name (e.g. 'github', 'gmail')."},
-				{Name: "--client-id", Required: true, Description: "OAuth client ID."},
-				{Name: "--client-secret", Required: true, Description: "OAuth client secret."},
+				{Name: "--field", Description: "Credential field as key=value (repeatable)."},
+				{Name: "--client-id", Description: "OAuth client ID (shorthand)."},
+				{Name: "--client-secret", Description: "OAuth client secret (shorthand)."},
+				{Name: "--json", Description: "Raw JSON object of credential fields."},
 			}},
 			{Name: "org apps remove", Description: "Remove BYOC credentials at the org level.", Args: []ArgInfo{
 				{Name: "--provider", Required: true, Description: "Provider name (e.g. 'github', 'gmail')."},
@@ -194,9 +271,39 @@ func (cmd *HelpCmd) Run(out *output.Writer) error {
 				{Name: "--provider", Required: true, Description: "Provider name (e.g. 'github', 'gmail')."},
 				{Name: "--enabled", Required: true, Description: "Set to true to enable, false to disable."},
 			}},
+			{Name: "org apps blocklist list", Description: "Show org blocklist state for a provider.", Args: []ArgInfo{
+				{Name: "--provider", Required: true, Description: "Provider name."},
+			}},
+			{Name: "org apps blocklist activate", Description: "Activate a predefined blocklist host (org).", Args: []ArgInfo{
+				{Name: "--provider", Required: true, Description: "Provider name."},
+				{Name: "--host-id", Required: true, Description: "Predefined blocklist host ID."},
+			}},
+			{Name: "org apps blocklist add", Description: "Add a custom blocklist rule (org).", Args: []ArgInfo{
+				{Name: "--provider", Required: true, Description: "Provider name."},
+				{Name: "--name", Required: true, Description: "Display name for the rule."},
+				{Name: "--host-pattern", Required: true, Description: "Host pattern to block."},
+			}},
+			{Name: "org apps blocklist toggle", Description: "Enable or disable a blocklist rule (org).", Args: []ArgInfo{
+				{Name: "--provider", Required: true, Description: "Provider name."},
+				{Name: "--rule-id", Required: true, Description: "Blocklist rule ID."},
+				{Name: "--enabled", Required: true, Description: "Set to true to enable, false to disable."},
+			}},
+			{Name: "org apps blocklist remove", Description: "Remove a blocklist rule (org).", Args: []ArgInfo{
+				{Name: "--provider", Required: true, Description: "Provider name."},
+				{Name: "--rule-id", Required: true, Description: "Blocklist rule ID."},
+			}},
+			{Name: "org settings get", Description: "Get organization settings (policy mode)."},
+			{Name: "org settings set", Description: "Update organization settings.", Args: []ArgInfo{
+				{Name: "--policy-mode", Required: true, Description: "Policy mode: 'allow' or 'deny'."},
+			}},
+			{Name: "vaults list", Description: "List external vault connections (e.g. 1Password)."},
+			{Name: "counts", Description: "Show the project's resource counts."},
 			{Name: "auth login", Description: "Store API key for authentication."},
 			{Name: "auth logout", Description: "Remove stored API key."},
 			{Name: "auth status", Description: "Show authentication status."},
+			{Name: "auth update", Description: "Update your profile (display name).", Args: []ArgInfo{
+				{Name: "--name", Required: true, Description: "New display name."},
+			}},
 			{Name: "auth api-key", Description: "Show your current API key."},
 			{Name: "auth regenerate-api-key", Description: "Regenerate your API key."},
 			{Name: "config get <key>", Description: "Get a config value."},
