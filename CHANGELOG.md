@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.3.1](https://github.com/onecli/onecli-cli/compare/v2.3.0...v2.3.1) (2026-07-04)
+
+
+### Bug Fixes
+
+* register gateway hook in Codex's native hooks.json so it fires ([#84](https://github.com/onecli/onecli-cli/issues/84)) ([e097d12](https://github.com/onecli/onecli-cli/commit/e097d12679de28d63da1d34e64b60d4bd6cae89a))
+
 ## [2.3.0](https://github.com/onecli/onecli-cli/compare/v2.2.7...v2.3.0) (2026-07-03)
 
 
