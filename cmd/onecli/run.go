@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"slices"
 	"strings"
@@ -261,6 +262,7 @@ var caTrustKeys = []string{
 	"NODE_EXTRA_CA_CERTS",
 	"SSL_CERT_FILE",
 	"REQUESTS_CA_BUNDLE",
+	"AWS_CA_BUNDLE",
 	"CURL_CA_BUNDLE",
 	"GIT_SSL_CAINFO",
 	"DENO_CERT",
@@ -557,8 +559,9 @@ func maybeCreateCodexAuthStub(out *output.Writer, client *api.Client) {
 }
 
 // maybeInjectNativeProxyConfig writes proxy_url into a TOML config file for
-// agents that have their own managed proxy (e.g. Codex). Also sets the
-// agent-specific CA certificate env var.
+// agents that have their own managed proxy (e.g. Codex), refreshing a stale
+// gateway-owned value from a previous run. Also sets the agent-specific CA
+// certificate env var.
 func maybeInjectNativeProxyConfig(out *output.Writer, agentName, configRelDir string, env []string, caPath string) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -572,17 +575,23 @@ func maybeInjectNativeProxyConfig(out *output.Writer, agentName, configRelDir st
 
 	configPath := filepath.Join(home, configRelDir, "config.toml")
 	data, _ := os.ReadFile(configPath)
-	content := string(data)
 
-	// Inject [network] section with proxy_url if not already present.
-	if !strings.Contains(content, "proxy_url") {
-		section := "\n[network]\nproxy_url = \"" + proxyURL + "\"\n"
-		content += section
-		if err := os.WriteFile(configPath, []byte(content), 0o600); err != nil {
+	updated, status := upsertGatewayProxyURL(string(data), proxyURL)
+	switch status {
+	case proxyURLCurrent:
+		// Already pointing at this gateway URL; nothing to write.
+	case proxyURLForeign:
+		out.Stderr(fmt.Sprintf("onecli: warning: %s has a custom proxy_url in config.toml; leaving it unchanged, so native %s traffic will bypass the gateway.", agentName, agentName))
+	default:
+		if err := os.WriteFile(configPath, []byte(updated), 0o600); err != nil {
 			out.Stderr(fmt.Sprintf("onecli: warning: could not write proxy config for %s: %v", agentName, err))
 			return
 		}
-		out.Stderr(fmt.Sprintf("onecli: configured native proxy for %s.", agentName))
+		if status == proxyURLAdded {
+			out.Stderr(fmt.Sprintf("onecli: configured native proxy for %s.", agentName))
+		} else {
+			out.Stderr(fmt.Sprintf("onecli: updated native proxy for %s.", agentName))
+		}
 	}
 
 	// Set CODEX_CA_CERTIFICATE if we have a CA path — Codex reads this
@@ -590,6 +599,46 @@ func maybeInjectNativeProxyConfig(out *output.Writer, agentName, configRelDir st
 	if caPath != "" {
 		os.Setenv("CODEX_CA_CERTIFICATE", caPath)
 	}
+}
+
+type proxyURLStatus int
+
+const (
+	proxyURLAdded proxyURLStatus = iota
+	proxyURLRefreshed
+	proxyURLCurrent
+	proxyURLForeign
+)
+
+var proxyURLLineRE = regexp.MustCompile(`^([ \t]*proxy_url[ \t]*=[ \t]*)"([^"]*)"[ \t]*$`)
+
+// upsertGatewayProxyURL ensures content carries proxy_url = "<proxyURL>",
+// appending a [network] section when the file has none. Gateway proxy URLs
+// embed a per-run aoc_ session token, so a previously injected value goes
+// stale on every new run; only values carrying that marker are rewritten
+// (in place, preserving the rest of the file). A user-managed proxy_url —
+// or one on a line we cannot parse, e.g. with a trailing comment — is left
+// untouched.
+func upsertGatewayProxyURL(content, proxyURL string) (string, proxyURLStatus) {
+	if !strings.Contains(content, "proxy_url") {
+		return content + "\n[network]\nproxy_url = \"" + proxyURL + "\"\n", proxyURLAdded
+	}
+	lines := strings.Split(content, "\n")
+	for i, line := range lines {
+		m := proxyURLLineRE.FindStringSubmatch(line)
+		if m == nil {
+			continue
+		}
+		if m[2] == proxyURL {
+			return content, proxyURLCurrent
+		}
+		if !strings.Contains(m[2], "aoc_") {
+			return content, proxyURLForeign
+		}
+		lines[i] = m[1] + `"` + proxyURL + `"`
+		return strings.Join(lines, "\n"), proxyURLRefreshed
+	}
+	return content, proxyURLForeign
 }
 
 // maybeInstallGatewayPlugin installs the Hermes transform_tool_result recovery

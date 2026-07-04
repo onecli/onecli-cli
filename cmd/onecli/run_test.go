@@ -808,6 +808,123 @@ func TestMaybeInstallGatewayHook_CodexHooksFile(t *testing.T) {
 	}
 }
 
+func TestUpsertGatewayProxyURL(t *testing.T) {
+	gw := "http://aoc_new:x@127.0.0.1:10255"
+	tests := []struct {
+		name    string
+		content string
+		want    string
+		status  proxyURLStatus
+	}{
+		{
+			name:    "empty file gets network section",
+			content: "",
+			want:    "\n[network]\nproxy_url = \"" + gw + "\"\n",
+			status:  proxyURLAdded,
+		},
+		{
+			name:    "existing config gets section appended",
+			content: "model = \"o4\"\n",
+			want:    "model = \"o4\"\n\n[network]\nproxy_url = \"" + gw + "\"\n",
+			status:  proxyURLAdded,
+		},
+		{
+			name:    "stale gateway url refreshed in place",
+			content: "# codex config\nmodel = \"o4\"\n\n[network]\nproxy_url = \"http://aoc_old:x@127.0.0.1:10255\"\nkeep = true\n",
+			want:    "# codex config\nmodel = \"o4\"\n\n[network]\nproxy_url = \"" + gw + "\"\nkeep = true\n",
+			status:  proxyURLRefreshed,
+		},
+		{
+			name:    "current gateway url untouched",
+			content: "[network]\nproxy_url = \"" + gw + "\"\n",
+			want:    "[network]\nproxy_url = \"" + gw + "\"\n",
+			status:  proxyURLCurrent,
+		},
+		{
+			name:    "user-managed proxy untouched",
+			content: "[network]\nproxy_url = \"http://corp-proxy:8080\"\n",
+			want:    "[network]\nproxy_url = \"http://corp-proxy:8080\"\n",
+			status:  proxyURLForeign,
+		},
+		{
+			name:    "unparseable proxy_url line untouched",
+			content: "[network]\nproxy_url = \"http://aoc_old:x@127.0.0.1:10255\" # pinned\n",
+			want:    "[network]\nproxy_url = \"http://aoc_old:x@127.0.0.1:10255\" # pinned\n",
+			status:  proxyURLForeign,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, status := upsertGatewayProxyURL(tt.content, gw)
+			if got != tt.want {
+				t.Errorf("content = %q, want %q", got, tt.want)
+			}
+			if status != tt.status {
+				t.Errorf("status = %d, want %d", status, tt.status)
+			}
+		})
+	}
+}
+
+func TestMaybeInjectNativeProxyConfig_RefreshesStaleToken(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("test overrides HOME, which UserHomeDir ignores on windows")
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	configPath := filepath.Join(home, ".codex", "config.toml")
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	stale := "model = \"o4\"\n\n[network]\nproxy_url = \"http://aoc_old:x@127.0.0.1:10255\"\n"
+	if err := os.WriteFile(configPath, []byte(stale), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var stderr bytes.Buffer
+	out := output.NewWithWriters(io.Discard, &stderr)
+	env := []string{"HTTPS_PROXY=http://aoc_new:x@127.0.0.1:10255"}
+	maybeInjectNativeProxyConfig(out, "Codex", ".codex", env, "")
+
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(data)
+	if !strings.Contains(content, "aoc_new") {
+		t.Errorf("stale token was not refreshed: %s", content)
+	}
+	if strings.Contains(content, "aoc_old") {
+		t.Errorf("stale token still present: %s", content)
+	}
+	if !strings.Contains(content, "model = \"o4\"") {
+		t.Errorf("unrelated config was dropped: %s", content)
+	}
+	if !strings.Contains(stderr.String(), "updated native proxy for Codex") {
+		t.Errorf("stderr = %q, want update notice", stderr.String())
+	}
+
+	// A user-managed proxy_url must survive and produce a warning.
+	custom := "[network]\nproxy_url = \"http://corp-proxy:8080\"\n"
+	if err := os.WriteFile(configPath, []byte(custom), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	stderr.Reset()
+	maybeInjectNativeProxyConfig(out, "Codex", ".codex", env, "")
+	data, err = os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != custom {
+		t.Errorf("user-managed config was modified: %s", data)
+	}
+	if !strings.Contains(stderr.String(), "custom proxy_url") {
+		t.Errorf("stderr = %q, want custom proxy warning", stderr.String())
+	}
+}
+
 func userPromptEntries(t *testing.T, path string) []any {
 	t.Helper()
 	m := readSettingsMap(t, path)
