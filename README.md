@@ -58,6 +58,24 @@ onecli rules update --id X [--action block] ...        Update a rule
 onecli rules delete --id X                             Delete a rule
 ```
 
+### Organization
+
+Organization-level resources are shared by every project in the org. Authenticate with an organization API key (`oc_org_...`); project selection is not required.
+
+```
+onecli org secrets list|create|update|delete           Manage org-level secrets
+onecli org rules list|get|create|update|delete         Manage org-level rules
+onecli org rules permissions get|set --provider X      Layered app permissions
+onecli org connections list [--provider X]             List org connections
+onecli org connections rename --id X --label Y         Rename an org connection
+onecli org connections delete --id X                   Delete an org connection
+onecli org apps configured|get|configure|remove|toggle Manage org BYOC app credentials
+onecli org apps connect --provider X --field k=v       Connect an app org-wide (API-key apps)
+onecli org apps authorize --provider X                 Get the OAuth authorize URL (open in a browser)
+onecli org apps blocklist list|activate|add|...        Manage org app blocklists
+onecli org settings get|set                            Organization settings
+```
+
 ### Auth
 
 ```
@@ -80,7 +98,7 @@ onecli config set <key> <value>                        Write config value
 | Variable | Description |
 |----------|-------------|
 | `ONECLI_API_KEY` | API key (overrides stored key) |
-| `ONECLI_API_HOST` | API base URL (default: `https://app.onecli.sh`) |
+| `ONECLI_API_HOST` | API base URL (default: `https://api.onecli.sh`) |
 | `ONECLI_ENV` | `dev` or `production` |
 
 ## Output

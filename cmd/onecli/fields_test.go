@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestBuildConfigFields(t *testing.T) {
 	tests := []struct {
@@ -110,5 +113,25 @@ func TestValidPermissionSettings(t *testing.T) {
 	}
 	if validPermissionSettings["rate_limit"] {
 		t.Error("'rate_limit' is a rule action, not a permission setting")
+	}
+}
+
+func TestBuildConnectFields(t *testing.T) {
+	fields, err := buildConnectFields(`{"apiKey":"from-json"}`, []string{"region=us"})
+	if err != nil {
+		t.Fatalf("buildConnectFields: %v", err)
+	}
+	if fields["apiKey"] != "from-json" || fields["region"] != "us" {
+		t.Errorf("fields = %v, want json+flag merge", fields)
+	}
+
+	if _, err := buildConnectFields("", nil); err == nil {
+		t.Fatal("expected an error for no fields")
+	} else if got := err.Error(); strings.Contains(got, "client-id") {
+		t.Errorf("error mentions flags connect does not have: %q", got)
+	}
+
+	if _, err := buildConnectFields(`{}`, nil); err == nil {
+		t.Fatal("expected an error for an empty JSON object")
 	}
 }

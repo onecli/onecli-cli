@@ -170,12 +170,10 @@ func (c *AppsGetCmd) Run(out *output.Writer) error {
 	return out.WriteFiltered(app, c.Fields)
 }
 
-// buildConfigFields assembles the credential fields for an app configure
-// command from, in precedence order: a raw --json object, repeated
-// --field key=value flags, and the --client-id/--client-secret sugar for
-// OAuth-style apps. Field names must match the app's own configurable field
-// definitions (e.g. github-app uses appId/appSlug/privateKey).
-func buildConfigFields(jsonPayload string, fieldFlags []string, clientID, clientSecret string) (api.ConfigFields, error) {
+// mergeCredentialFields merges a raw --json object with repeated
+// --field key=value flags (flags override). Emptiness is checked by the
+// callers, whose flag surfaces differ.
+func mergeCredentialFields(jsonPayload string, fieldFlags []string) (api.ConfigFields, error) {
 	fields := api.ConfigFields{}
 	if jsonPayload != "" {
 		if err := json.Unmarshal([]byte(jsonPayload), &fields); err != nil {
@@ -189,6 +187,19 @@ func buildConfigFields(jsonPayload string, fieldFlags []string, clientID, client
 		}
 		fields[key] = value
 	}
+	return fields, nil
+}
+
+// buildConfigFields assembles the credential fields for an app configure
+// command from, in precedence order: a raw --json object, repeated
+// --field key=value flags, and the --client-id/--client-secret sugar for
+// OAuth-style apps. Field names must match the app's own configurable field
+// definitions (e.g. github-app uses appId/appSlug/privateKey).
+func buildConfigFields(jsonPayload string, fieldFlags []string, clientID, clientSecret string) (api.ConfigFields, error) {
+	fields, err := mergeCredentialFields(jsonPayload, fieldFlags)
+	if err != nil {
+		return nil, err
+	}
 	if clientID != "" {
 		fields["clientId"] = clientID
 	}
@@ -197,6 +208,20 @@ func buildConfigFields(jsonPayload string, fieldFlags []string, clientID, client
 	}
 	if len(fields) == 0 {
 		return nil, fmt.Errorf("no credential fields provided: use --field key=value (repeatable), --json, or --client-id/--client-secret")
+	}
+	return fields, nil
+}
+
+// buildConnectFields assembles the credential fields for a direct connect
+// command (which has no --client-id/--client-secret sugar). Field names must
+// match the app's own connection method field definitions.
+func buildConnectFields(jsonPayload string, fieldFlags []string) (api.ConfigFields, error) {
+	fields, err := mergeCredentialFields(jsonPayload, fieldFlags)
+	if err != nil {
+		return nil, err
+	}
+	if len(fields) == 0 {
+		return nil, fmt.Errorf("no credential fields provided: use --field key=value (repeatable) or --json")
 	}
 	return fields, nil
 }

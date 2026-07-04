@@ -271,6 +271,18 @@ func (cmd *HelpCmd) Run(out *output.Writer) error {
 				{Name: "--provider", Required: true, Description: "Provider name (e.g. 'github', 'gmail')."},
 				{Name: "--enabled", Required: true, Description: "Set to true to enable, false to disable."},
 			}},
+			{Name: "org apps connect", Description: "Connect an app at the org level with direct credentials (API-key apps); the connection is shared by every project.", Args: []ArgInfo{
+				{Name: "--provider", Required: true, Description: "Provider name (e.g. 'fireflies', 'slack')."},
+				{Name: "--field", Description: "Credential field as key=value (repeatable)."},
+				{Name: "--json", Description: "Raw JSON object of credential fields."},
+				{Name: "--label", Description: "Optional label for the connection."},
+				{Name: "--connection-id", Description: "Existing connection id to reconnect."},
+				{Name: "--method", Description: "Connection method for apps with alternates (e.g. 'api_key')."},
+			}},
+			{Name: "org apps authorize", Description: "Get the OAuth authorize URL for an org-level app connection; open it in a browser to finish.", Args: []ArgInfo{
+				{Name: "--provider", Required: true, Description: "Provider name (e.g. 'github', 'google-drive')."},
+				{Name: "--connection-id", Description: "Existing connection id to re-authenticate."},
+			}},
 			{Name: "org apps blocklist list", Description: "Show org blocklist state for a provider.", Args: []ArgInfo{
 				{Name: "--provider", Required: true, Description: "Provider name."},
 			}},
