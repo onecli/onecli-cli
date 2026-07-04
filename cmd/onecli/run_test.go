@@ -798,6 +798,9 @@ func TestMaybeInstallGatewayHook_CodexHooksFile(t *testing.T) {
 	if !strings.Contains(stderr.String(), "installed gateway hook for Codex") {
 		t.Errorf("stderr = %q, want install notice", stderr.String())
 	}
+	if !strings.Contains(stderr.String(), "run /hooks inside it to trust") {
+		t.Errorf("stderr = %q, want one-time trust notice for dedicated hooks file", stderr.String())
+	}
 
 	// The Claude-style settings.json must not be created when hooksFile is set.
 	if _, err := os.Stat(filepath.Join(home, ".agents", "settings.json")); !os.IsNotExist(err) {

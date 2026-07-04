@@ -992,7 +992,13 @@ func maybeInstallGatewayHook(out *output.Writer, agentName, baseDir, hooksFile s
 	if err != nil || !changed {
 		return
 	}
-	out.Stderr(fmt.Sprintf("onecli: installed gateway hook for %s.", agentName))
+	notice := fmt.Sprintf("onecli: installed gateway hook for %s.", agentName)
+	if hooksFile != "" {
+		// Dedicated-hooks-file agents gate new hooks behind a one-time trust
+		// review; until approved, the hook is silently skipped.
+		notice += fmt.Sprintf(" %s asks once before running new hooks; run /hooks inside it to trust the OneCLI gateway hook.", agentName)
+	}
+	out.Stderr(notice)
 }
 
 // registerUserPromptHook adds a UserPromptSubmit command hook to a Claude
