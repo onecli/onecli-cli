@@ -1,13 +1,18 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
+	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/onecli/onecli-cli/pkg/output"
 
 	"gopkg.in/yaml.v3"
 )
@@ -143,7 +148,7 @@ func TestAgentSkillDir(t *testing.T) {
 		{"claude", agentSpec{agentName: "Claude Code", baseDir: ".claude"}, true},
 		{"cursor", agentSpec{agentName: "Cursor", baseDir: ".cursor", configDir: "Cursor"}, true},
 		{"agent", agentSpec{agentName: "Cursor", baseDir: ".cursor", configDir: "Cursor"}, true},
-		{"codex", agentSpec{agentName: "Codex", baseDir: ".agents", nativeProxyConfig: ".codex"}, true},
+		{"codex", agentSpec{agentName: "Codex", baseDir: ".agents", nativeProxyConfig: ".codex", hooksFile: ".codex/hooks.json"}, true},
 		{"hermes", agentSpec{agentName: "Hermes", baseDir: ".hermes", skipHook: true, pluginGateway: true, dockerSandbox: true}, true},
 		{"opencode", agentSpec{agentName: "OpenCode", baseDir: ".opencode"}, true},
 		{"/usr/local/bin/cursor", agentSpec{agentName: "Cursor", baseDir: ".cursor", configDir: "Cursor"}, true},
@@ -587,6 +592,228 @@ func TestMergeVSCodeProxySettings_RejectsJSONC(t *testing.T) {
 	if !strings.Contains(err.Error(), "comments or invalid JSON") {
 		t.Errorf("error = %q, want mention of comments", err.Error())
 	}
+}
+
+func TestRegisterUserPromptHook_NewFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".codex", "hooks.json")
+
+	changed, err := registerUserPromptHook(path, "bash /home/u/.agents/hooks/UserPromptSubmit/onecli_gateway_detect.sh", false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !changed {
+		t.Fatal("changed = false, want true")
+	}
+
+	entries := userPromptEntries(t, path)
+	if len(entries) != 1 {
+		t.Fatalf("entries = %d, want 1", len(entries))
+	}
+	entry := entries[0].(map[string]any)
+	if _, hasMatcher := entry["matcher"]; hasMatcher {
+		t.Error("dedicated hooks file entry should not include matcher")
+	}
+	inner := entry["hooks"].([]any)[0].(map[string]any)
+	if inner["type"] != "command" {
+		t.Errorf("type = %v, want command", inner["type"])
+	}
+}
+
+func TestRegisterUserPromptHook_PreservesExistingHooks(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "hooks.json")
+	writeJSON(t, path, `{
+  "hooks": {
+    "SessionStart": [
+      {"hooks": [{"type": "command", "command": "notify.sh session"}]}
+    ],
+    "UserPromptSubmit": [
+      {"hooks": [{"type": "command", "command": "notify.sh prompt"}]}
+    ],
+    "Stop": [
+      {"hooks": [{"type": "command", "command": "notify.sh stop"}]}
+    ]
+  }
+}
+`)
+
+	changed, err := registerUserPromptHook(path, "bash detect.sh", false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !changed {
+		t.Fatal("changed = false, want true")
+	}
+
+	m := readSettingsMap(t, path)
+	hooks := m["hooks"].(map[string]any)
+	for _, event := range []string{"SessionStart", "Stop"} {
+		if entries, ok := hooks[event].([]any); !ok || len(entries) != 1 {
+			t.Errorf("existing %s hooks were dropped", event)
+		}
+	}
+	entries := hooks["UserPromptSubmit"].([]any)
+	if len(entries) != 2 {
+		t.Fatalf("UserPromptSubmit entries = %d, want 2 (existing + ours)", len(entries))
+	}
+	first := entries[0].(map[string]any)["hooks"].([]any)[0].(map[string]any)
+	if first["command"] != "notify.sh prompt" {
+		t.Errorf("existing entry displaced: %v", first["command"])
+	}
+}
+
+func TestRegisterUserPromptHook_Idempotent(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "hooks.json")
+
+	if changed, err := registerUserPromptHook(path, "bash detect.sh", false); err != nil || !changed {
+		t.Fatalf("first call: changed=%v err=%v", changed, err)
+	}
+	if changed, err := registerUserPromptHook(path, "bash detect.sh", false); err != nil || changed {
+		t.Fatalf("second call: changed=%v err=%v, want no-op", changed, err)
+	}
+	if entries := userPromptEntries(t, path); len(entries) != 1 {
+		t.Errorf("entries = %d, want 1", len(entries))
+	}
+}
+
+func TestRegisterUserPromptHook_SettingsMatcher(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "settings.json")
+
+	if _, err := registerUserPromptHook(path, "bash detect.sh", true); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	entry := userPromptEntries(t, path)[0].(map[string]any)
+	if m, ok := entry["matcher"]; !ok || m != "" {
+		t.Errorf("matcher = %v (present=%v), want empty string present", m, ok)
+	}
+}
+
+func TestRegisterUserPromptHook_InvalidJSON(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "hooks.json")
+	writeJSON(t, path, `{not json`)
+
+	if _, err := registerUserPromptHook(path, "bash detect.sh", false); err == nil {
+		t.Fatal("expected error for invalid JSON")
+	}
+}
+
+func TestGatewayDetectHook_EmitsJSONEnvelope(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("hook script requires bash")
+	}
+	dir := t.TempDir()
+	script := filepath.Join(dir, "hook.sh")
+	if err := os.WriteFile(script, []byte(gatewayDetectHook), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("gateway active", func(t *testing.T) {
+		cmd := exec.Command("bash", script)
+		cmd.Env = []string{"HTTPS_PROXY=http://aoc_tok:x@127.0.0.1:10255"}
+		out, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("hook failed: %v", err)
+		}
+		var envelope struct {
+			HookSpecificOutput struct {
+				HookEventName     string `json:"hookEventName"`
+				AdditionalContext string `json:"additionalContext"`
+			} `json:"hookSpecificOutput"`
+		}
+		if err := json.Unmarshal(out, &envelope); err != nil {
+			t.Fatalf("hook output is not valid JSON: %v\noutput: %s", err, out)
+		}
+		if envelope.HookSpecificOutput.HookEventName != "UserPromptSubmit" {
+			t.Errorf("hookEventName = %q, want UserPromptSubmit", envelope.HookSpecificOutput.HookEventName)
+		}
+		if !strings.Contains(envelope.HookSpecificOutput.AdditionalContext, "OneCLI gateway active") {
+			t.Errorf("additionalContext = %q, want gateway notice", envelope.HookSpecificOutput.AdditionalContext)
+		}
+	})
+
+	t.Run("gateway inactive", func(t *testing.T) {
+		cmd := exec.Command("bash", script)
+		cmd.Env = []string{"HTTPS_PROXY=http://corp-proxy:8080"}
+		out, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("hook failed: %v", err)
+		}
+		if len(bytes.TrimSpace(out)) != 0 {
+			t.Errorf("expected no output when gateway inactive, got: %s", out)
+		}
+	})
+}
+
+func TestMaybeInstallGatewayHook_CodexHooksFile(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("test overrides HOME, which UserHomeDir ignores on windows")
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	// Pre-existing hooks.json with a third-party hook, as other Codex tools
+	// write it (no matcher field).
+	hooksPath := filepath.Join(home, ".codex", "hooks.json")
+	writeJSON(t, hooksPath, `{
+  "hooks": {
+    "SessionStart": [
+      {"hooks": [{"type": "command", "command": "notify.sh session"}]}
+    ]
+  }
+}
+`)
+
+	var stderr bytes.Buffer
+	out := output.NewWithWriters(io.Discard, &stderr)
+	maybeInstallGatewayHook(out, "Codex", ".agents", ".codex/hooks.json")
+
+	// Hook script lands under the shared .agents dir.
+	scriptPath := filepath.Join(home, ".agents", "hooks", "UserPromptSubmit", "onecli_gateway_detect.sh")
+	script, err := os.ReadFile(scriptPath)
+	if err != nil {
+		t.Fatalf("hook script not written: %v", err)
+	}
+	if !bytes.Equal(script, []byte(gatewayDetectHook)) {
+		t.Error("hook script content mismatch")
+	}
+
+	// Registration lands in ~/.codex/hooks.json, preserving the existing hook.
+	m := readSettingsMap(t, hooksPath)
+	hooks := m["hooks"].(map[string]any)
+	if _, ok := hooks["SessionStart"].([]any); !ok {
+		t.Error("existing SessionStart hook was dropped")
+	}
+	entries, _ := hooks["UserPromptSubmit"].([]any)
+	if len(entries) != 1 {
+		t.Fatalf("UserPromptSubmit entries = %d, want 1", len(entries))
+	}
+	cmd := entries[0].(map[string]any)["hooks"].([]any)[0].(map[string]any)["command"].(string)
+	if cmd != "bash "+scriptPath {
+		t.Errorf("command = %q, want %q", cmd, "bash "+scriptPath)
+	}
+	if !strings.Contains(stderr.String(), "installed gateway hook for Codex") {
+		t.Errorf("stderr = %q, want install notice", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "run /hooks inside it to trust") {
+		t.Errorf("stderr = %q, want one-time trust notice for dedicated hooks file", stderr.String())
+	}
+
+	// The Claude-style settings.json must not be created when hooksFile is set.
+	if _, err := os.Stat(filepath.Join(home, ".agents", "settings.json")); !os.IsNotExist(err) {
+		t.Error("settings.json should not be created when hooksFile is set")
+	}
+}
+
+func userPromptEntries(t *testing.T, path string) []any {
+	t.Helper()
+	m := readSettingsMap(t, path)
+	hooks, _ := m["hooks"].(map[string]any)
+	entries, _ := hooks["UserPromptSubmit"].([]any)
+	return entries
 }
 
 func readSettingsMap(t *testing.T, path string) map[string]any {

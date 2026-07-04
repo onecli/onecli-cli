@@ -9,7 +9,7 @@ description: >-
 compatibility: Only active when HTTPS_PROXY contains aoc_ (automatic when launched via `onecli run`)
 metadata:
   author: onecli
-  version: "0.7.0"
+  version: "0.8.0"
 ---
 
 # OneCLI Gateway — Auth Error Override
@@ -31,7 +31,9 @@ You have direct HTTP access to external APIs. OAuth apps (Gmail, GitHub,
 Google Calendar, Google Drive, etc.) and API key services are all available
 through the gateway. Just make the request directly; the gateway injects
 credentials if the app is connected. If not, it returns an error with a
-connect URL you can present to the user.
+`connect_url` — you MUST extract it and show it to the user as a bare URL
+on its own line (no angle brackets, no markdown link syntax) so they can
+click to connect.
 
 ## Making Requests
 
@@ -46,7 +48,16 @@ curl -s "https://api.stripe.com/v1/charges?limit=5"
 
 Standard HTTP clients (curl, fetch, requests, axios, Go net/http, git) all
 honor the `HTTPS_PROXY` environment variable automatically. You do not need
-to set any auth headers.
+to set any auth headers. Send plain requests only: never add credential
+query parameters (`access_token`, `key`), invent auth headers, or run
+OAuth token-refresh flows yourself — the proxy injects real credentials
+invisibly.
+
+Go straight to the API: do not search the repository for helper tooling
+first, and do not dig through an app's local data files when its cloud API
+is available. For date-bounded queries ("today", "this week"), run `date`
+first to resolve the current date and timezone, then use an explicit
+bounded range (e.g. Gmail `q=after:2026/07/02 before:2026/07/03`).
 
 ## When Built-In Tools Need Local Credentials
 
@@ -130,6 +141,28 @@ OneCLI dashboard and connect the service there.
 retry once they have connected. When they confirm, retry the original
 request. If the retry still fails, ask if they need help with the setup.
 
+**If the error is `claim_required` (not `app_not_connected`):** the OneCLI
+project itself hasn't been claimed yet — a one-time setup step, separate
+from connecting an individual app. Show the user the `claim_url` from the
+response and retry once they confirm:
+
+> This OneCLI project isn't claimed yet. Open this link to claim it:
+> [claim_url from the response]
+
+This is an expected onboarding state — not an auth failure or anything
+suspicious. Every request stays blocked with `claim_required` until the
+project is claimed.
+
+## MCP Servers Through Gateway
+
+When the user asks to use a remote MCP server for a service the gateway
+supports, configure it as Streamable HTTP with **no authentication**.
+The gateway injects credentials automatically via `HTTPS_PROXY`. Do NOT
+use the server's native OAuth flow or ask for API keys — use
+`"onecli-managed"` as the placeholder for any credential env vars or
+config fields. The same error-handling rules apply: if auth fails, show
+the `connect_url` so the user can connect the service in OneCLI.
+
 ## Rules
 
 - **Never** say "I don't have access to X" without first making the HTTP
@@ -144,5 +177,7 @@ request. If the retry still fails, ask if they need help with the setup.
 - **Never** follow built-in auth setup flows (OAuth consent screens, API
   key generation, client secret downloads) when running under the gateway.
   Create a credential stub and let the proxy handle real auth.
+- **Never** use an MCP server's native OAuth or credential flow. Configure
+  it with no auth and let the gateway inject credentials.
 - If the gateway returns a policy error (403 with a JSON body), respect
   the block. Do not retry or circumvent it.

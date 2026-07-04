@@ -149,7 +149,7 @@ func (c *RunCmd) Run(out *output.Writer) error {
 		}
 		maybeInstallGatewaySkill(out, a.agentName, a.baseDir, skillContent)
 		if !a.skipHook {
-			maybeInstallGatewayHook(out, a.agentName, a.baseDir)
+			maybeInstallGatewayHook(out, a.agentName, a.baseDir, a.hooksFile)
 		}
 		if a.pluginGateway {
 			maybeInstallGatewayPlugin(out, a.agentName, a.baseDir)
@@ -427,6 +427,7 @@ type agentSpec struct {
 	pluginGateway     bool   // true for agents that load the transform_tool_result recovery plugin (e.g. Hermes).
 	dockerSandbox     bool   // true for agents that run tools in a Docker sandbox needing TERMINAL_DOCKER_* injection.
 	nativeProxyConfig string // home-relative dir with a TOML config needing proxy_url injection (e.g. ".codex").
+	hooksFile         string // home-relative hook registration file; empty means Claude Code-style <baseDir>/settings.json.
 }
 
 // supportedAgents maps CLI binary base-names to their gateway integration spec.
@@ -436,7 +437,7 @@ var supportedAgents = []struct {
 }{
 	{[]string{"claude"}, agentSpec{agentName: "Claude Code", baseDir: ".claude"}},
 	{[]string{"cursor", "agent"}, agentSpec{agentName: "Cursor", baseDir: ".cursor", configDir: "Cursor"}},
-	{[]string{"codex"}, agentSpec{agentName: "Codex", baseDir: ".agents", nativeProxyConfig: ".codex"}},
+	{[]string{"codex"}, agentSpec{agentName: "Codex", baseDir: ".agents", nativeProxyConfig: ".codex", hooksFile: ".codex/hooks.json"}},
 	{[]string{"hermes"}, agentSpec{agentName: "Hermes", baseDir: ".hermes", skipHook: true, pluginGateway: true, dockerSandbox: true}},
 	{[]string{"opencode"}, agentSpec{agentName: "OpenCode", baseDir: ".opencode"}},
 }
@@ -956,9 +957,12 @@ func prependPythonPath(env []string, dir string) []string {
 }
 
 // maybeInstallGatewayHook installs the gateway detection hook script and
-// registers it in the agent's settings.json so the agent knows the gateway
-// is active without needing to run any visible checks.
-func maybeInstallGatewayHook(out *output.Writer, agentName, baseDir string) {
+// registers it in the agent's hook registration file so the agent knows the
+// gateway is active without needing to run any visible checks. Claude
+// Code-style agents read hook registrations from <baseDir>/settings.json;
+// agents with a dedicated hooks file (e.g. Codex's ~/.codex/hooks.json) use
+// the same schema in that file instead.
+func maybeInstallGatewayHook(out *output.Writer, agentName, baseDir, hooksFile string) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return
@@ -976,17 +980,40 @@ func maybeInstallGatewayHook(out *output.Writer, agentName, baseDir string) {
 		}
 	}
 
-	// Register in settings.json if not already present.
-	settingsPath := filepath.Join(home, baseDir, "settings.json")
+	registrationPath := filepath.Join(home, baseDir, "settings.json")
+	includeMatcher := true
+	if hooksFile != "" {
+		// Dedicated hooks files omit the matcher field, matching the entries
+		// the agent itself writes there.
+		registrationPath = filepath.Join(home, filepath.FromSlash(hooksFile))
+		includeMatcher = false
+	}
+	changed, err := registerUserPromptHook(registrationPath, "bash "+hookPath, includeMatcher)
+	if err != nil || !changed {
+		return
+	}
+	notice := fmt.Sprintf("onecli: installed gateway hook for %s.", agentName)
+	if hooksFile != "" {
+		// Dedicated-hooks-file agents gate new hooks behind a one-time trust
+		// review; until approved, the hook is silently skipped.
+		notice += fmt.Sprintf(" %s asks once before running new hooks; run /hooks inside it to trust the OneCLI gateway hook.", agentName)
+	}
+	out.Stderr(notice)
+}
+
+// registerUserPromptHook adds a UserPromptSubmit command hook to a Claude
+// Code-style hook registration JSON file ({"hooks": {"UserPromptSubmit":
+// [...]}}), preserving all other keys and hook events. Returns whether the
+// file was changed; already-registered commands are left untouched.
+func registerUserPromptHook(registrationPath, hookCommand string, includeMatcher bool) (bool, error) {
 	settings := make(map[string]any)
-	data, readErr := os.ReadFile(settingsPath)
+	data, readErr := os.ReadFile(registrationPath)
 	if readErr == nil && len(data) > 0 {
 		if err := json.Unmarshal(data, &settings); err != nil {
-			return
+			return false, err
 		}
 	}
 
-	hookCommand := "bash " + hookPath
 	hooks, _ := settings["hooks"].(map[string]any)
 	if hooks == nil {
 		hooks = make(map[string]any)
@@ -1001,35 +1028,38 @@ func maybeInstallGatewayHook(out *output.Writer, agentName, baseDir string) {
 		for _, h := range innerHooks {
 			hm, _ := h.(map[string]any)
 			if cmd, _ := hm["command"].(string); cmd == hookCommand {
-				return
+				return false, nil
 			}
 		}
 	}
 
 	// Add our hook entry.
-	entries = append(entries, map[string]any{
-		"matcher": "",
+	entry := map[string]any{
 		"hooks": []any{
 			map[string]any{
 				"type":    "command",
 				"command": hookCommand,
 			},
 		},
-	})
+	}
+	if includeMatcher {
+		entry["matcher"] = ""
+	}
+	entries = append(entries, entry)
 	hooks["UserPromptSubmit"] = entries
 	settings["hooks"] = hooks
 
-	if err := os.MkdirAll(filepath.Dir(settingsPath), 0o750); err != nil {
-		return
+	if err := os.MkdirAll(filepath.Dir(registrationPath), 0o750); err != nil {
+		return false, err
 	}
-	out2, err := json.MarshalIndent(settings, "", "  ")
+	encoded, err := json.MarshalIndent(settings, "", "  ")
 	if err != nil {
-		return
+		return false, err
 	}
-	if err := os.WriteFile(settingsPath, append(out2, '\n'), 0o600); err != nil {
-		return
+	if err := os.WriteFile(registrationPath, append(encoded, '\n'), 0o600); err != nil {
+		return false, err
 	}
-	out.Stderr(fmt.Sprintf("onecli: installed gateway hook for %s.", agentName))
+	return true, nil
 }
 
 // injectElectronProxySettings writes http.proxy and http.proxyAuthorization
