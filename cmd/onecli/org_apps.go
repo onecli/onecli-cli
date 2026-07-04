@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 
+	"github.com/onecli/onecli-cli/internal/api"
 	"github.com/onecli/onecli-cli/pkg/output"
 	"github.com/onecli/onecli-cli/pkg/validate"
 )
@@ -14,6 +15,8 @@ type OrgAppsCmd struct {
 	Configure  OrgAppsConfigureCmd  `cmd:"" help:"Save BYOC credentials for a provider at the org level."`
 	Remove     OrgAppsRemoveCmd     `cmd:"" help:"Remove BYOC credentials for a provider at the org level."`
 	Toggle     OrgAppsToggleCmd     `cmd:"" help:"Enable or disable an app config at the org level."`
+	Connect    OrgAppsConnectCmd    `cmd:"" help:"Connect an app at the org level with direct credentials (API-key apps)."`
+	Authorize  OrgAppsAuthorizeCmd  `cmd:"" help:"Get the OAuth authorize URL for an org-level app connection."`
 	Blocklist  OrgAppsBlocklistCmd  `cmd:"" help:"Manage an app's endpoint blocklist at the org level."`
 }
 
@@ -86,6 +89,86 @@ func (c *OrgAppsConfigureCmd) Run(out *output.Writer) error {
 		return err
 	}
 	return out.Write(map[string]string{"status": "configured", "provider": c.Provider})
+}
+
+// OrgAppsConnectCmd is `onecli org apps connect`.
+type OrgAppsConnectCmd struct {
+	Provider     string   `required:"" help:"Provider name (e.g. 'fireflies', 'slack')."`
+	Field        []string `optional:"" help:"Credential field as key=value (repeatable); names per the app's connection method fields."`
+	Json         string   `optional:"" help:"Raw JSON object of credential fields. Merged first; --field overrides."`
+	Label        string   `optional:"" help:"Optional label for the connection (defaults to metadata-derived)."`
+	ConnectionID string   `optional:"" name:"connection-id" help:"Existing connection id to reconnect instead of creating a new one."`
+	Method       string   `optional:"" help:"Connection method for apps with alternates (e.g. 'api_key' on OAuth-primary apps)."`
+	DryRun       bool     `optional:"" name:"dry-run" help:"Validate the request without executing it."`
+}
+
+func (c *OrgAppsConnectCmd) Run(out *output.Writer) error {
+	if err := validate.ResourceID(c.Provider); err != nil {
+		return fmt.Errorf("invalid provider: %w", err)
+	}
+	if c.ConnectionID != "" {
+		if err := validate.ResourceID(c.ConnectionID); err != nil {
+			return fmt.Errorf("invalid connection id: %w", err)
+		}
+	}
+	fields, err := buildConnectFields(c.Json, c.Field)
+	if err != nil {
+		return err
+	}
+
+	if c.DryRun {
+		return out.WriteDryRun("Would connect org app", maskedFieldPreview(c.Provider, fields))
+	}
+
+	client, err := newClient()
+	if err != nil {
+		return err
+	}
+	input := api.ConnectAppInput{
+		Fields:       fields,
+		ConnectionID: c.ConnectionID,
+		Label:        c.Label,
+		Method:       c.Method,
+	}
+	if err := client.ConnectOrgApp(newContext(), c.Provider, input); err != nil {
+		return err
+	}
+	return out.Write(map[string]string{
+		"status":   "connected",
+		"provider": c.Provider,
+		"scope":    "organization",
+	})
+}
+
+// OrgAppsAuthorizeCmd is `onecli org apps authorize`.
+type OrgAppsAuthorizeCmd struct {
+	Provider     string `required:"" help:"Provider name (e.g. 'github', 'google-drive')."`
+	ConnectionID string `optional:"" name:"connection-id" help:"Existing connection id to re-authenticate."`
+}
+
+func (c *OrgAppsAuthorizeCmd) Run(out *output.Writer) error {
+	if err := validate.ResourceID(c.Provider); err != nil {
+		return fmt.Errorf("invalid provider: %w", err)
+	}
+	if c.ConnectionID != "" {
+		if err := validate.ResourceID(c.ConnectionID); err != nil {
+			return fmt.Errorf("invalid connection id: %w", err)
+		}
+	}
+	client, err := newClient()
+	if err != nil {
+		return err
+	}
+	authorizeURL, err := client.OrgAppAuthorizeURL(newContext(), c.Provider, c.ConnectionID)
+	if err != nil {
+		return err
+	}
+	out.SetHint("Open authorizeUrl in a browser to finish the OAuth flow; the connection is created at the organization level.")
+	return out.Write(map[string]string{
+		"authorizeUrl": authorizeURL,
+		"provider":     c.Provider,
+		"scope":        "organization",
+	})
 }
 
 // OrgAppsRemoveCmd is `onecli org apps remove`.
