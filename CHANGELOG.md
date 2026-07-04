@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.4.0](https://github.com/onecli/onecli-cli/compare/v2.3.1...v2.4.0) (2026-07-04)
+
+
+### Features
+
+* add org apps connect and authorize commands ([#88](https://github.com/onecli/onecli-cli/issues/88)) ([e5b75db](https://github.com/onecli/onecli-cli/commit/e5b75db5a37e22f49a5027c9547622e5ff4a040f))
+
+
+### Bug Fixes
+
+* refresh stale gateway proxy_url in Codex config on each run ([#89](https://github.com/onecli/onecli-cli/issues/89)) ([1a01afc](https://github.com/onecli/onecli-cli/commit/1a01afcf4fd4c846ef0215860dd133d4149ae473))
+
 ## [2.3.1](https://github.com/onecli/onecli-cli/compare/v2.3.0...v2.3.1) (2026-07-04)
 
 
