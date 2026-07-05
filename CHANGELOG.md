@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.5.0](https://github.com/onecli/onecli-cli/compare/v2.4.0...v2.5.0) (2026-07-05)
+
+
+### Features
+
+* identity-only permission catalogs in rule and app output ([#91](https://github.com/onecli/onecli-cli/issues/91)) ([00613a4](https://github.com/onecli/onecli-cli/commit/00613a4be62139af26ef63b75e7e92cc307e4a8b))
+
 ## [2.4.0](https://github.com/onecli/onecli-cli/compare/v2.3.1...v2.4.0) (2026-07-04)
 
 
