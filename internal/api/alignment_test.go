@@ -247,3 +247,100 @@ func TestUpdateRuleRefetchesAfterSuccess(t *testing.T) {
 		t.Errorf("rule = %+v, want the re-fetched rule", rule)
 	}
 }
+
+func TestListRulesDecodesMaskedAppRules(t *testing.T) {
+	// App-permission rules omit hostPattern/pathPattern/method (the endpoint
+	// mapping is server-internal); custom rules keep them. One list mixes both.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/v1/rules" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		_, _ = w.Write([]byte(`[
+			{"id":"app-1","name":"Gmail: Send email","action":"manual_approval","enabled":true,
+			 "agentId":null,"rateLimit":null,"rateLimitWindow":null,"scope":"project",
+			 "metadata":{"source":"app_permission","provider":"gmail","toolId":"send_email"},
+			 "conditions":null,"createdAt":"2026-07-04T00:00:00Z"},
+			{"id":"custom-1","name":"Block deletes","hostPattern":"api.example.com",
+			 "pathPattern":"/v1/*","method":"DELETE","action":"block","enabled":true,
+			 "agentId":null,"rateLimit":null,"rateLimitWindow":null,"scope":"project",
+			 "metadata":null,"conditions":null,"createdAt":"2026-07-04T00:00:00Z"}
+		]`))
+	}))
+	defer srv.Close()
+
+	client := newWithPrefix(srv.URL, "oc_key", "/v1")
+	rules, err := client.ListRules(context.Background(), "")
+	if err != nil {
+		t.Fatalf("ListRules: %v", err)
+	}
+	if len(rules) != 2 {
+		t.Fatalf("len(rules) = %d, want 2", len(rules))
+	}
+
+	appRule, custom := rules[0], rules[1]
+	if appRule.HostPattern != nil || appRule.PathPattern != nil || appRule.Method != nil {
+		t.Errorf("app rule endpoint fields = %v/%v/%v, want all nil", appRule.HostPattern, appRule.PathPattern, appRule.Method)
+	}
+	meta, ok := appRule.Metadata.(map[string]any)
+	if !ok || meta["provider"] != "gmail" || meta["toolId"] != "send_email" {
+		t.Errorf("app rule metadata = %v, want the provider+toolId handle", appRule.Metadata)
+	}
+	if custom.HostPattern == nil || *custom.HostPattern != "api.example.com" {
+		t.Errorf("custom rule hostPattern = %v, want api.example.com", custom.HostPattern)
+	}
+	if custom.Method == nil || *custom.Method != "DELETE" {
+		t.Errorf("custom rule method = %v, want DELETE", custom.Method)
+	}
+
+	// The masked fields must also stay out of re-serialized output (omitempty).
+	out, err := json.Marshal(appRule)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	for _, key := range []string{"hostPattern", "pathPattern", "method"} {
+		if json.Valid(out) && containsKey(out, key) {
+			t.Errorf("marshaled app rule contains %q: %s", key, out)
+		}
+	}
+}
+
+func containsKey(raw []byte, key string) bool {
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return false
+	}
+	_, ok := m[key]
+	return ok
+}
+
+func TestGetPermissionDefinitionDecodesSlimCatalog(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/v1/apps/gmail/permission-definition" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		_, _ = w.Write([]byte(`{"provider":"gmail","groups":[
+			{"category":"read",
+			 "wildcard":{"id":"read_all","name":"All read operations","description":"Everything read"},
+			 "tools":[{"id":"read_email","name":"Read email","description":"Read messages"}]}
+		]}`))
+	}))
+	defer srv.Close()
+
+	client := newWithPrefix(srv.URL, "oc_key", "/v1")
+	def, err := client.GetPermissionDefinition(context.Background(), "gmail")
+	if err != nil {
+		t.Fatalf("GetPermissionDefinition: %v", err)
+	}
+	if def.Provider != "gmail" || len(def.Groups) != 1 {
+		t.Fatalf("def = %+v, want gmail with one group", def)
+	}
+	group := def.Groups[0]
+	if group.Category != "read" || group.Wildcard == nil || group.Wildcard.ID != "read_all" {
+		t.Errorf("group = %+v, want read category with read_all wildcard", group)
+	}
+	if len(group.Tools) != 1 || group.Tools[0].ID != "read_email" || group.Tools[0].Name != "Read email" {
+		t.Errorf("tools = %+v, want the read_email tool identity", group.Tools)
+	}
+}

@@ -66,16 +66,13 @@ func (c *Client) GetApp(ctx context.Context, provider string) (*App, error) {
 // Project connection operations live in connections.go (top-level
 // /v1/connections resource with a legacy-path fallback).
 
-// AppTool is one operation in an app's permission catalog.
+// AppTool is one operation in an app's permission catalog. The API serves
+// only the tool's identity (id/name/description); the endpoint mapping
+// behind a tool is resolved server-side from its toolId.
 type AppTool struct {
-	ID            string   `json:"id"`
-	Name          string   `json:"name"`
-	Description   string   `json:"description"`
-	HostPattern   string   `json:"hostPattern"`
-	PathPattern   string   `json:"pathPattern"`
-	AliasPatterns []string `json:"aliasPatterns,omitempty"`
-	Method        string   `json:"method,omitempty"`
-	Methods       []string `json:"methods,omitempty"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
 }
 
 // AppToolGroup groups an app's tools by read/write category, optionally with

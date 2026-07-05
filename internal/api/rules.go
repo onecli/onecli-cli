@@ -6,13 +6,16 @@ import (
 	"net/http"
 )
 
-// Rule represents a policy rule returned by the API.
+// Rule represents a policy rule returned by the API. The endpoint fields
+// (hostPattern/pathPattern/method) are present on custom rules only —
+// app-permission rules (metadata.source == "app_permission") omit them and
+// are identified by metadata.provider + metadata.toolId instead.
 type Rule struct {
 	ID              string          `json:"id"`
 	Name            string          `json:"name"`
-	HostPattern     string          `json:"hostPattern"`
-	PathPattern     *string         `json:"pathPattern"`
-	Method          *string         `json:"method"`
+	HostPattern     *string         `json:"hostPattern,omitempty"`
+	PathPattern     *string         `json:"pathPattern,omitempty"`
+	Method          *string         `json:"method,omitempty"`
 	Action          string          `json:"action"`
 	Enabled         bool            `json:"enabled"`
 	AgentID         *string         `json:"agentId"`
