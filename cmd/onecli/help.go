@@ -164,24 +164,24 @@ func (cmd *HelpCmd) Run(out *output.Writer) error {
 			{Name: "rules list", Description: "List all policy rules.", Args: []ArgInfo{
 				{Name: "--project, -p", Description: "Project slug."},
 			}},
-			{Name: "rules create", Description: "Create a new policy rule.", Args: []ArgInfo{
+			{Name: "rules create", Description: "Create a legacy rule (cloud deployments reject with 410 — use 'policy rules create').", Args: []ArgInfo{
 				{Name: "--project, -p", Description: "Project slug."},
 				{Name: "--name", Required: true, Description: "Display name for the rule."},
 				{Name: "--host-pattern", Required: true, Description: "Host pattern to match."},
 				{Name: "--action", Required: true, Description: "Action: 'block', 'rate_limit', 'manual_approval', or 'allow'."},
 				{Name: "--conditions", Description: "Content conditions as a JSON array."},
 			}},
-			{Name: "rules update", Description: "Update an existing policy rule.", Args: []ArgInfo{
+			{Name: "rules update", Description: "Update a legacy rule (cloud deployments reject with 410 — use 'policy rules update').", Args: []ArgInfo{
 				{Name: "--id", Required: true, Description: "ID of the rule to update."},
 			}},
-			{Name: "rules delete", Description: "Delete a policy rule.", Args: []ArgInfo{
+			{Name: "rules delete", Description: "Delete a legacy rule (cloud deployments reject with 410 — use 'policy rules delete').", Args: []ArgInfo{
 				{Name: "--id", Required: true, Description: "ID of the rule to delete."},
 			}},
 			{Name: "rules permissions get", Description: "Get layered tool permissions for a provider.", Args: []ArgInfo{
 				{Name: "--provider", Required: true, Description: "Provider name (e.g. 'github', 'gmail')."},
 				{Name: "--agent-id", Description: "Show only this agent's override layer."},
 			}},
-			{Name: "rules permissions set", Description: "Set tool permissions for a provider (optionally per agent).", Args: []ArgInfo{
+			{Name: "rules permissions set", Description: "Set tool permissions (legacy — cloud deployments reject with 410; use 'policy' rules with app targets).", Args: []ArgInfo{
 				{Name: "--provider", Required: true, Description: "Provider name (e.g. 'github', 'gmail')."},
 				{Name: "--tool", Description: "Tool ID (see 'apps permission-definition')."},
 				{Name: "--permission", Description: "Permission: 'allow', 'manual_approval', 'block', or 'inherit' (agent layer only)."},
@@ -191,6 +191,41 @@ func (cmd *HelpCmd) Run(out *output.Writer) error {
 			{Name: "rules overlap", Description: "Count custom rules overlapping an app's hosts.", Args: []ArgInfo{
 				{Name: "--provider", Required: true, Description: "Provider name."},
 			}},
+			{Name: "policy rules list", Description: "List policy-engine rules (draft or the enforced published set).", Args: []ArgInfo{
+				{Name: "--project, -p", Description: "Project slug."},
+				{Name: "--status", Description: "'draft' (default) or 'published' (enforced)."},
+			}},
+			{Name: "policy rules get", Description: "Get one DRAFT policy rule by id.", Args: []ArgInfo{
+				{Name: "--id", Required: true, Description: "Draft rule id (published ids regenerate every publish — match by logicalId)."},
+			}},
+			{Name: "policy rules create", Description: "Create a policy rule (auto-publishes when the draft is otherwise clean).", Args: []ArgInfo{
+				{Name: "--name", Description: "Display name (required unless --json)."},
+				{Name: "--action", Description: "'allow' or 'block' (required unless --json)."},
+				{Name: "--targets", Description: "JSON array of targets: app/connection/secret/network (required unless --json)."},
+				{Name: "--identities", Description: "JSON array of identities; omit for all agents."},
+				{Name: "--rate-limit", Description: "Max requests per window (allow rules; pair with --rate-limit-window)."},
+				{Name: "--require-approval", Description: "Require manual approval (allow rules)."},
+				{Name: "--json", Description: "Raw JSON payload for the full rule (do not combine with field flags)."},
+				{Name: "--no-publish", Description: "Stage only."},
+				{Name: "--publish-all", Description: "Publish even when the draft holds other staged changes."},
+			}},
+			{Name: "policy rules update", Description: "Update a DRAFT policy rule (same publish flags as create).", Args: []ArgInfo{
+				{Name: "--id", Required: true, Description: "Draft rule id."},
+			}},
+			{Name: "policy rules delete", Description: "Delete a DRAFT policy rule (same publish flags).", Args: []ArgInfo{
+				{Name: "--id", Required: true, Description: "Draft rule id."},
+			}},
+			{Name: "policy rules reorder", Description: "Reorder the draft — the id list must name EVERY non-default draft rule.", Args: []ArgInfo{
+				{Name: "--ordered-ids", Required: true, Description: "JSON array of all draft rule ids (from 'policy rules list --quiet id')."},
+			}},
+			{Name: "policy default get", Description: "Show the terminal Default Rule.", Args: []ArgInfo{
+				{Name: "--status", Description: "'draft' (default) or 'published'."},
+			}},
+			{Name: "policy default set", Description: "Set the Default Rule's action.", Args: []ArgInfo{
+				{Name: "--action", Required: true, Description: "'allow' or 'block'."},
+			}},
+			{Name: "policy publish", Description: "Publish the WHOLE staged draft (all staged changes, yours and others')."},
+			{Name: "policy status", Description: "Show staged changes (the diff) and the last publish."},
 			{Name: "projects list", Description: "List all projects."},
 			{Name: "projects get", Description: "Get a single project by ID.", Args: []ArgInfo{
 				{Name: "--id", Required: true, Description: "ID of the project to retrieve."},
@@ -222,27 +257,56 @@ func (cmd *HelpCmd) Run(out *output.Writer) error {
 			{Name: "org rules get", Description: "Get a single org-scoped policy rule.", Args: []ArgInfo{
 				{Name: "--id", Required: true, Description: "ID of the rule to retrieve."},
 			}},
-			{Name: "org rules create", Description: "Create a new org-scoped policy rule.", Args: []ArgInfo{
+			{Name: "org rules create", Description: "Create a legacy org rule (cloud deployments reject with 410 — use 'org policy rules create').", Args: []ArgInfo{
 				{Name: "--name", Required: true, Description: "Display name for the rule."},
 				{Name: "--host-pattern", Required: true, Description: "Host pattern to match."},
 				{Name: "--action", Required: true, Description: "Action: 'block', 'rate_limit', 'manual_approval', or 'allow'."},
 			}},
-			{Name: "org rules update", Description: "Update an org-scoped policy rule.", Args: []ArgInfo{
+			{Name: "org rules update", Description: "Update a legacy org rule (cloud deployments reject with 410 — use 'org policy rules update').", Args: []ArgInfo{
 				{Name: "--id", Required: true, Description: "ID of the rule to update."},
 			}},
-			{Name: "org rules delete", Description: "Delete an org-scoped policy rule.", Args: []ArgInfo{
+			{Name: "org rules delete", Description: "Delete a legacy org rule (cloud deployments reject with 410 — use 'org policy rules delete').", Args: []ArgInfo{
 				{Name: "--id", Required: true, Description: "ID of the rule to delete."},
 			}},
 			{Name: "org rules permissions get", Description: "Get tool permissions for a provider.", Args: []ArgInfo{
 				{Name: "--provider", Required: true, Description: "Provider name (e.g. 'github', 'gmail')."},
 			}},
-			{Name: "org rules permissions set", Description: "Set tool permissions for a provider.", Args: []ArgInfo{
+			{Name: "org rules permissions set", Description: "Set org tool permissions (legacy — cloud deployments reject with 410; use 'org policy' rules with app targets).", Args: []ArgInfo{
 				{Name: "--provider", Required: true, Description: "Provider name (e.g. 'github', 'gmail')."},
 				{Name: "--json", Required: true, Description: "JSON payload with 'changes' array."},
 			}},
 			{Name: "org rules overlap", Description: "Count custom org rules overlapping an app's hosts.", Args: []ArgInfo{
 				{Name: "--provider", Required: true, Description: "Provider name."},
 			}},
+			{Name: "org policy rules list", Description: "List org policy-engine rules (draft or published).", Args: []ArgInfo{
+				{Name: "--status", Description: "'draft' (default) or 'published' (enforced)."},
+			}},
+			{Name: "org policy rules get", Description: "Get one DRAFT org policy rule by id.", Args: []ArgInfo{
+				{Name: "--id", Required: true, Description: "Draft rule id (published ids regenerate every publish — match by logicalId)."},
+			}},
+			{Name: "org policy rules create", Description: "Create an org policy rule (group/user identities; auto-publishes when the draft is clean).", Args: []ArgInfo{
+				{Name: "--name", Description: "Display name (required unless --json)."},
+				{Name: "--action", Description: "'allow' or 'block' (required unless --json)."},
+				{Name: "--targets", Description: "JSON array of targets (required unless --json)."},
+				{Name: "--identities", Description: "JSON array — org rules take agentGroup/user/group identities."},
+				{Name: "--no-publish", Description: "Stage only."},
+				{Name: "--publish-all", Description: "Publish even when the draft holds other staged changes."},
+			}},
+			{Name: "org policy rules update", Description: "Update a DRAFT org policy rule.", Args: []ArgInfo{
+				{Name: "--id", Required: true, Description: "Draft rule id."},
+			}},
+			{Name: "org policy rules delete", Description: "Delete a DRAFT org policy rule.", Args: []ArgInfo{
+				{Name: "--id", Required: true, Description: "Draft rule id."},
+			}},
+			{Name: "org policy rules reorder", Description: "Reorder the org draft (full id permutation).", Args: []ArgInfo{
+				{Name: "--ordered-ids", Required: true, Description: "JSON array of all org draft rule ids."},
+			}},
+			{Name: "org policy default get", Description: "Show the org's terminal Default Rule."},
+			{Name: "org policy default set", Description: "Set the org Default Rule's action.", Args: []ArgInfo{
+				{Name: "--action", Required: true, Description: "'allow' or 'block'."},
+			}},
+			{Name: "org policy publish", Description: "Publish the org's WHOLE staged draft."},
+			{Name: "org policy status", Description: "Show the org's staged changes and last publish."},
 			{Name: "org connections list", Description: "List all org-scoped connections.", Args: []ArgInfo{
 				{Name: "--provider", Description: "Filter by provider name."},
 			}},

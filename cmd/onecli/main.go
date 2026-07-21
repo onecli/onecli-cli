@@ -27,9 +27,10 @@ type CLI struct {
 	Agents   AgentsCmd   `cmd:"" help:"Manage agents."`
 	Secrets  SecretsCmd  `cmd:"" help:"Manage secrets."`
 	Apps     AppsCmd     `cmd:"" help:"Manage app connections."`
-	Rules    RulesCmd    `cmd:"" help:"Manage policy rules."`
+	Rules    RulesCmd    `cmd:"" help:"Manage legacy policy rules (cloud deployments reject writes — see 'onecli policy')."`
+	Policy   PolicyCmd   `cmd:"" help:"Manage policy rules on the policy engine (draft → publish)."`
 	Projects ProjectsCmd `cmd:"" help:"Manage projects."`
-	Org      OrgCmd      `cmd:"" help:"Organization-scoped management (secrets, rules, connections, apps, settings)."`
+	Org      OrgCmd      `cmd:"" help:"Organization-scoped management (secrets, rules, policy, connections, apps, settings)."`
 	Vaults   VaultsCmd   `cmd:"" help:"List external vault connections."`
 	Counts   CountsCmd   `cmd:"" help:"Show the project's resource counts."`
 	Auth     AuthCmd     `cmd:"" help:"Manage authentication."`
@@ -83,6 +84,17 @@ func main() {
 func handleError(out *output.Writer, err error) {
 	var apiErr *api.APIError
 	if errors.As(err, &apiErr) {
+		// A 400/401 demanding a project header is a scoping problem, not an
+		// auth one — "onecli auth login" would be misleading advice.
+		if (apiErr.StatusCode == 400 || apiErr.StatusCode == 401) &&
+			strings.Contains(apiErr.Message, "X-Project-Id") {
+			_ = out.ErrorWithAction(
+				exitcode.CodeError,
+				apiErr.Message,
+				"pass --project <slug> or run 'onecli config set project <slug>'",
+			)
+			os.Exit(exitcode.Error)
+		}
 		switch apiErr.StatusCode {
 		case 401:
 			_ = out.ErrorWithAction(exitcode.CodeAuthRequired, apiErr.Message, "onecli auth login")
@@ -96,11 +108,33 @@ func handleError(out *output.Writer, err error) {
 		case 409:
 			_ = out.Error(exitcode.CodeConflict, apiErr.Message)
 			os.Exit(exitcode.Conflict)
+		case 410:
+			// A retired endpoint: the server message names the replacement.
+			_ = out.ErrorWithAction(
+				exitcode.CodeGone,
+				apiErr.Message,
+				"onecli policy --help (org rules: 'onecli org policy --help')",
+			)
+			os.Exit(exitcode.Error)
+		case 422:
+			_ = out.Error(exitcode.CodeValidation, apiErr.Message)
+			os.Exit(exitcode.Error)
 		}
 	}
 
 	_ = out.Error(exitcode.CodeError, err.Error())
 	os.Exit(exitcode.Error)
+}
+
+// loadStoredAPIKey returns the resolved API key (env or credential file),
+// or "" — used for fail-fast key-shape checks; the client loads it itself.
+func loadStoredAPIKey() string {
+	credDir, err := config.CredentialsDir()
+	if err != nil {
+		return ""
+	}
+	key, _ := auth.NewStore(nil, credDir).Load()
+	return key
 }
 
 // newClient creates an API client using the resolved API key and host.
