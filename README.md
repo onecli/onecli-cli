@@ -48,7 +48,10 @@ onecli secrets update --id X --value Y                 Update a secret
 onecli secrets delete --id X                           Delete a secret
 ```
 
-### Rules
+### Rules (legacy model)
+
+Cloud deployments reject these writes (410) — use the `policy` family below.
+Pre-cutover self-hosted servers still accept them.
 
 ```
 onecli rules list                                      List all policy rules
@@ -58,14 +61,36 @@ onecli rules update --id X [--action block] ...        Update a rule
 onecli rules delete --id X                             Delete a rule
 ```
 
+### Policy (the policy engine)
+
+Rules stage into a DRAFT and enforce on publish. Writes auto-publish when the
+draft has no other staged changes (`--no-publish` stages; `--publish-all`
+publishes everything).
+
+```
+onecli policy rules list [--status published]          List rules (draft or the enforced set)
+onecli policy rules get --id X                         Get a DRAFT rule
+onecli policy rules create --name X --action allow \
+  --targets '[{"kind":"network","hostPattern":"api.example.com"}]'
+onecli policy rules update --id X [--action block]     Update a DRAFT rule
+onecli policy rules delete --id X                      Delete a DRAFT rule
+onecli policy rules reorder --ordered-ids '[...]'      Reorder (every draft id exactly once)
+onecli policy default get                              Show the terminal Default Rule
+onecli policy default set --action allow|block         Set the Default Rule's action
+onecli policy publish                                  Publish the whole staged draft
+onecli policy status                                   Staged diff + last publish
+```
+
 ### Organization
 
 Organization-level resources are shared by every project in the org. Authenticate with an organization API key (`oc_org_...`); project selection is not required.
 
 ```
 onecli org secrets list|create|update|delete           Manage org-level secrets
-onecli org rules list|get|create|update|delete         Manage org-level rules
-onecli org rules permissions get|set --provider X      Layered app permissions
+onecli org rules list|get|create|update|delete         Manage org-level rules (legacy; cloud rejects writes)
+onecli org rules permissions get|set --provider X      Layered app permissions (legacy; cloud rejects writes)
+onecli org policy rules list|get|create|update|delete|reorder  Org policy-engine rules (draft → publish)
+onecli org policy default get|set / publish / status   Org Default Rule + publish + staged diff
 onecli org connections list [--provider X]             List org connections
 onecli org connections rename --id X --label Y         Rename an org connection
 onecli org connections delete --id X                   Delete an org connection
