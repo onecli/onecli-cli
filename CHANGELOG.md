@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.6.0](https://github.com/onecli/onecli-cli/compare/v2.5.0...v2.6.0) (2026-07-21)
+
+
+### Features
+
+* add the policy command family (/v1/policy + /v1/org/policy) ([#93](https://github.com/onecli/onecli-cli/issues/93)) ([6741097](https://github.com/onecli/onecli-cli/commit/6741097cec2abc19347a7df54f4fd368357e74d9))
+
 ## [2.5.0](https://github.com/onecli/onecli-cli/compare/v2.4.0...v2.5.0) (2026-07-05)
 
 
