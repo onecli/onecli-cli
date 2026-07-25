@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.7.0](https://github.com/onecli/onecli-cli/compare/v2.6.0...v2.7.0) (2026-07-25)
+
+
+### Features
+
+* add the policy reflection commands, mark the retired ones ([#95](https://github.com/onecli/onecli-cli/issues/95)) ([14d7ea5](https://github.com/onecli/onecli-cli/commit/14d7ea56402c12974036b8fb79615777e31b9803))
+
 ## [2.6.0](https://github.com/onecli/onecli-cli/compare/v2.5.0...v2.6.0) (2026-07-21)
 
 
