@@ -29,8 +29,9 @@ type EffectiveProvenance struct {
 }
 
 // EffectiveTool is one tool's verdict under the published policy. Verdict is
-// one of allowed | blocked | needsApproval | rateLimited | unmanaged; a group
-// rollup may also read "mixed".
+// one of allow | approval | block | unmanaged, or "mixed" when the tool's
+// variants (or a group's tools) disagree. A rate limit is not a verdict — it
+// rides RateLimit/RateLimitWindow on an allow.
 type EffectiveTool struct {
 	ToolID          string               `json:"toolId"`
 	Verdict         string               `json:"verdict"`
@@ -39,6 +40,8 @@ type EffectiveTool struct {
 	DecidedBy       *EffectiveProvenance `json:"decidedBy"`
 }
 
+// EffectiveToolGroup is a read or write group of tools with the rollup of
+// their verdicts — "mixed" when they disagree.
 type EffectiveToolGroup struct {
 	Category string          `json:"category"`
 	Verdict  string          `json:"verdict"`
