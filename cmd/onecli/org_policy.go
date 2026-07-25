@@ -16,10 +16,11 @@ import (
 
 // OrgPolicyCmd is `onecli org policy`.
 type OrgPolicyCmd struct {
-	Rules   OrgPolicyRulesCmd   `cmd:"" help:"Manage the organization's policy rules (draft → publish)."`
-	Default OrgPolicyDefaultCmd `cmd:"" help:"Show or set the organization's terminal Default Rule."`
-	Publish OrgPolicyPublishCmd `cmd:"" help:"Publish the organization's staged draft (all staged changes)."`
-	Status  OrgPolicyStatusCmd  `cmd:"" help:"Show staged changes and the last publish."`
+	Rules                OrgPolicyRulesCmd                `cmd:"" help:"Manage the organization's policy rules (draft → publish)."`
+	Default              OrgPolicyDefaultCmd              `cmd:"" help:"Show or set the organization's terminal Default Rule."`
+	Publish              OrgPolicyPublishCmd              `cmd:"" help:"Publish the organization's staged draft (all staged changes)."`
+	Status               OrgPolicyStatusCmd               `cmd:"" help:"Show staged changes and the last publish."`
+	EffectivePermissions OrgPolicyEffectivePermissionsCmd `cmd:"" name:"effective-permissions" help:"Show what the published org policy allows for an app, per tool (read-only)."`
 }
 
 // OrgPolicyRulesCmd groups the org rule subcommands.

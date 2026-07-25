@@ -20,10 +20,11 @@ import (
 
 // PolicyCmd is `onecli policy` (project scope).
 type PolicyCmd struct {
-	Rules   PolicyRulesCmd   `cmd:"" help:"Manage the project's policy rules (draft → publish)."`
-	Default PolicyDefaultCmd `cmd:"" help:"Show or set the project's terminal Default Rule."`
-	Publish PolicyPublishCmd `cmd:"" help:"Publish the project's staged draft (all staged changes)."`
-	Status  PolicyStatusCmd  `cmd:"" help:"Show staged changes and the last publish."`
+	Rules                PolicyRulesCmd                `cmd:"" help:"Manage the project's policy rules (draft → publish)."`
+	Default              PolicyDefaultCmd              `cmd:"" help:"Show or set the project's terminal Default Rule."`
+	Publish              PolicyPublishCmd              `cmd:"" help:"Publish the project's staged draft (all staged changes)."`
+	Status               PolicyStatusCmd               `cmd:"" help:"Show staged changes and the last publish."`
+	EffectivePermissions PolicyEffectivePermissionsCmd `cmd:"" name:"effective-permissions" help:"Show what the published policy allows for an app, per tool (read-only)."`
 }
 
 // PolicyRulesCmd groups the rule subcommands.

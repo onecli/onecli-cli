@@ -23,7 +23,8 @@ type AgentsCmd struct {
 	SetSecrets      AgentsSetSecretsCmd      `cmd:"" name:"set-secrets" help:"Set secrets assigned to an agent."`
 	SetSecretMode   AgentsSetSecretModeCmd   `cmd:"" name:"set-secret-mode" help:"Set an agent's secret mode."`
 	GranularAccess  AgentsGranularAccessCmd  `cmd:"" name:"granular-access" help:"Show per-agent granular-access policies across the project."`
-	Connections     AgentsConnectionsCmd     `cmd:"" help:"Manage an agent's app-connection assignments."`
+	Connections     AgentsConnectionsCmd     `cmd:"" help:"Manage an agent's app-connection assignments (RETIRED — updated servers answer 410; see 'onecli agents credentials')."`
+	Credentials     AgentsCredentialsCmd     `cmd:"" help:"Show which credentials the agent can use and what each one can do (read-only)."`
 }
 
 // AgentsSetDefaultCmd is `onecli agents set-default`.

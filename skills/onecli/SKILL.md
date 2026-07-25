@@ -37,25 +37,28 @@ onecli agents create --name "My Agent" --identifier my-agent
 onecli agents list --quiet id
 
 # 5. Assign the secret to the agent
-onecli agents set-secrets --id <agent-id> --secret-ids <secret-id>
+# Grant a credential by naming the agent in an allow rule; `set-secrets` is retired.
+onecli policy rules create --name "Anthropic for worker" --action allow \
+  --identities '[{"type":"agent","id":"<agent-id>"}]' \
+  --targets '[{"kind":"secret","secretId":"<secret-id>"}]' 
 ```
 
 ### Block an endpoint
 
 ```bash
-onecli rules create --name "Block Gmail send" \
-  --host-pattern "gmail.googleapis.com" \
-  --path-pattern "/gmail/v1/users/me/messages/send" \
-  --action block --method POST
+onecli policy rules create --name "Block Gmail send" --action block \
+  --targets '[{"kind":"network","hostPattern":"gmail.googleapis.com","pathPattern":"/gmail/v1/users/me/messages/send","method":"POST"}]'
 ```
 
 ### Rate limit an endpoint
 
 ```bash
-onecli rules create --name "Limit Anthropic calls" \
-  --host-pattern "api.anthropic.com" \
-  --action rate_limit --rate-limit 100 --rate-limit-window hour
+onecli policy rules create --name "Limit Anthropic calls" --action allow \
+  --rate-limit 100 --rate-limit-window hour \
+  --targets '[{"kind":"network","hostPattern":"api.anthropic.com"}]'
 ```
+
+The legacy `rules create` answers 410 on an updated server.
 
 Cloud deployments reject legacy `rules` writes (410) — use the `policy`
 family there. Pre-cutover self-hosted servers still accept legacy writes and
@@ -92,7 +95,7 @@ Policy invariants (make these explicit — they are not intuitable):
 
 ```bash
 onecli agents list --fields id,name,secretMode
-onecli agents secrets --id <agent-id>
+onecli agents credentials --id <agent-id>   # what the policy actually grants
 ```
 
 ### View and regenerate API key
