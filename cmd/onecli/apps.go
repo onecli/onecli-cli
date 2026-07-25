@@ -33,8 +33,9 @@ type AppsCmd struct {
 
 // AppsConnectionsCmd is the `onecli apps connections` command group.
 type AppsConnectionsCmd struct {
-	List   AppsConnectionsListCmd   `cmd:"" help:"List app connections, optionally filtered by provider."`
-	Rename AppsConnectionsRenameCmd `cmd:"" help:"Rename an app connection."`
+	List        AppsConnectionsListCmd        `cmd:"" help:"List app connections, optionally filtered by provider."`
+	Rename      AppsConnectionsRenameCmd      `cmd:"" help:"Rename an app connection."`
+	AgentAccess AppsConnectionsAgentAccessCmd `cmd:"" name:"agent-access" help:"Show which agents can reach a connection, and what each can do (read-only)."`
 }
 
 // AppsConnectionsListCmd is `onecli apps connections list`.

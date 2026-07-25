@@ -34,9 +34,10 @@ onecli agents create --name X --identifier Y           Create a new agent
 onecli agents delete --id X                            Delete an agent
 onecli agents rename --id X --name Y                   Rename an agent
 onecli agents regenerate-token --id X                  Regenerate access token
-onecli agents secrets --id X                           List assigned secrets
-onecli agents set-secrets --id X --secret-ids a,b      Set assigned secrets
+onecli agents credentials --id X                       What the agent can use (read-only)
 onecli agents set-secret-mode --id X --mode selective  Set secret mode
+onecli agents secrets --id X                           RETIRED — see 'agents credentials'
+onecli agents set-secrets --id X --secret-ids a,b      RETIRED — grant with a policy rule
 ```
 
 ### Secrets
@@ -54,11 +55,28 @@ Cloud deployments reject these writes (410) — use the `policy` family below.
 Pre-cutover self-hosted servers still accept them.
 
 ```
-onecli rules list                                      List all policy rules
-onecli rules get --id X                                Get a single rule
-onecli rules create --name X --host-pattern Y ...      Create a new rule
-onecli rules update --id X [--action block] ...        Update a rule
-onecli rules delete --id X                             Delete a rule
+onecli rules list                                      RETIRED — see 'policy rules list'
+onecli rules get --id X                                RETIRED — see 'policy rules get'
+onecli rules create --name X --host-pattern Y ...      RETIRED — see 'policy rules create'
+onecli rules update --id X [--action block] ...        RETIRED — see 'policy rules update'
+onecli rules delete --id X                             RETIRED — see 'policy rules delete'
+```
+
+Every `rules` subcommand answers **410 Gone** on an updated server — the policy
+engine replaced them. They remain only for pre-cutover self-hosted servers,
+where `policy` is not yet available, and retire when those do.
+
+### Policy reflections (read-only)
+
+What the PUBLISHED policy actually allows — the replacements for the retired
+permission and equipment reads. These resolve the rules, so a credential granted
+by a rule shows up here even though no assignment row exists for it.
+
+```
+onecli policy effective-permissions --provider gmail        Per-tool verdicts for an app
+onecli org policy effective-permissions --provider gmail    …at the org scope
+onecli agents credentials --id X                            What one agent can use
+onecli apps connections agent-access --id X                 Who can reach a connection
 ```
 
 ### Policy (the policy engine)
