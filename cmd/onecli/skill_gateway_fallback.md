@@ -163,7 +163,54 @@ use the server's native OAuth flow or ask for API keys — use
 config fields. The same error-handling rules apply: if auth fails, show
 the `connect_url` so the user can connect the service in OneCLI.
 
+## Databases (Postgres)
+
+Registered databases are governed the same way as HTTP APIs: a governed
+route ALWAYS exists in your environment for every database you may reach.
+`onecli run` swaps database URLs already in your ENVIRONMENT for OneCLI
+proxy URLs (`postgresql://aoc_pg_...:x@<gateway>:<port>/<db>`) and
+additionally exports one `ONECLI_PG_<NAME>_URL` variable per registered
+database, indexed in `ONECLI_PG_CONNECTIONS` (JSON:
+`[{"label", "host", "env_var"}]`). The proxy holds the real credentials
+and logs every statement for the user.
+
+To connect to any postgres host:
+
+1. Check `ONECLI_PG_CONNECTIONS` for the host. If listed, connect via the
+   variable named in its `env_var` — ALWAYS, even if you were given
+   credentials directly (pasted or found in a file). The gateway injects
+   the real credentials; supplied ones are ignored on the proxy route.
+2. If the host is not listed, run `onecli pg url <host>` — it prints
+   `{url, label, host, expires_in_seconds}` when the database was
+   registered after your session started. Connect via that `url`.
+3. If it errors with "not_registered", do NOT connect directly — tell the
+   user to connect that database in the OneCLI dashboard, then retry.
+
+- **Always use the environment variable** (`$DATABASE_URL`, the mapped
+  `ONECLI_PG_*_URL`, and friends) to connect — via `psql`, an ORM, or any
+  client. You may change the database path segment of a mapped URL to
+  reach another database on the same server.
+- **Do NOT read connection strings out of `.env` or config files, and
+  do NOT `source .env` (or use dotenv-style overrides) before connecting.**
+  Sourcing the file overwrites the governed environment variable with a
+  stale, ungoverned URL. The variable is ALREADY set in your environment —
+  use it as-is. If the env var and a file disagree, the env var wins.
+- A username starting with `aoc_pg_` is expected — that is the proxy
+  session. Do not treat it as a misconfiguration and do not swap it for
+  credentials found elsewhere.
+- If a database connection fails with "session expired or unknown", run
+  `onecli pg url <host>` for a fresh governed URL (or tell the user to
+  re-run `onecli run`). If it fails with "unregistered database", tell
+  the user to connect that database in the OneCLI dashboard.
+
 ## Rules
+
+- **Never** connect to a database host directly when it appears in
+  `ONECLI_PG_CONNECTIONS` — use its mapped environment variable. Direct
+  connections bypass the user's governance and logging.
+- **Never** connect to a database using a URL read from a file when the
+  same variable exists in the environment. The environment holds the
+  governed proxy URL.
 
 - **Never** say "I don't have access to X" without first making the HTTP
   request through the proxy.

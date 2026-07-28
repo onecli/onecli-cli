@@ -42,13 +42,15 @@ var caShimSource string
 
 // RunCmd is `onecli run -- <command> [args...]`.
 type RunCmd struct {
-	Project string   `optional:"" short:"p" help:"Project slug."`
-	Agent   string   `optional:"" name:"agent" help:"OneCLI agent identifier (uses default agent if omitted)."`
-	Gateway string   `optional:"" name:"gateway" help:"Gateway host:port override (default: derived from API host)."`
-	NoCA    bool     `optional:"" name:"no-ca" help:"Skip writing the CA cert and CA trust env injection."`
-	Enforce bool     `optional:"" name:"enforce" help:"OS-enforced governance: route the agent's sandboxed egress through the gateway so it cannot be bypassed (Claude Code only)."`
-	DryRun  bool     `optional:"" name:"dry-run" help:"Print resolved env and command without executing."`
-	Args    []string `arg:"" optional:"" name:"command" help:"Command and arguments to execute (after --)."`
+	Project   string   `optional:"" short:"p" help:"Project slug."`
+	Agent     string   `optional:"" name:"agent" help:"OneCLI agent identifier (uses default agent if omitted)."`
+	Gateway   string   `optional:"" name:"gateway" help:"Gateway host:port override (default: derived from API host)."`
+	NoCA      bool     `optional:"" name:"no-ca" help:"Skip writing the CA cert and CA trust env injection."`
+	Enforce   bool     `optional:"" name:"enforce" help:"OS-enforced governance: route the agent's sandboxed egress through the gateway so it cannot be bypassed (Claude Code only)."`
+	NoPgProxy bool     `optional:"" name:"no-pg-proxy" help:"Skip Postgres URL interception (registered databases will not be governed)."`
+	PgProxy   string   `optional:"" name:"pg-proxy" help:"Postgres governance mode: 'required' aborts the run if a registered database cannot be routed through the gateway (default: best-effort)."`
+	DryRun    bool     `optional:"" name:"dry-run" help:"Print resolved env and command without executing."`
+	Args      []string `arg:"" optional:"" name:"command" help:"Command and arguments to execute (after --)."`
 }
 
 func (c *RunCmd) Run(out *output.Writer) error {
@@ -109,7 +111,7 @@ func (c *RunCmd) Run(out *output.Writer) error {
 	}
 
 	// Dry-run: print resolved config without side effects (no CA write,
-	// no skill install, no exec).
+	// no skill install, no pg session mint, no exec).
 	if c.DryRun {
 		injected := make([]string, 0, len(cfg.Env)+len(caTrustKeys))
 		for k := range cfg.Env {
@@ -118,11 +120,31 @@ func (c *RunCmd) Run(out *output.Writer) error {
 		if !c.NoCA && cfg.CACertificate != "" {
 			injected = append(injected, caTrustKeys...)
 		}
-		return out.WriteDryRun("Would exec command with OneCLI gateway", map[string]any{
+		payload := map[string]any{
 			"binary":       binary,
 			"args":         c.Args,
 			"env_injected": injected,
-		})
+		}
+		// Read-only pg preview: which vars WOULD be swapped / warned on.
+		// No sessions are minted (that is a side effect).
+		if !c.NoPgProxy {
+			if proxyURL := firstProxyURL(cfg.Env); proxyURL != "" {
+				if gwURL, agentToken, ok := gatewayOriginAndToken(proxyURL); ok {
+					cwd, _ := os.Getwd()
+					swap, unmatched := previewPgSwap(
+						&api.PgGatewayClient{BaseURL: gwURL, AgentToken: agentToken},
+						os.Environ(), cwd,
+					)
+					if len(swap) > 0 {
+						payload["pg_env_swapped"] = swap
+					}
+					if len(unmatched) > 0 {
+						payload["pg_unregistered_hosts"] = unmatched
+					}
+				}
+			}
+		}
+		return out.WriteDryRun("Would exec command with OneCLI gateway", payload)
 	}
 
 	// Write CA cert to disk (unless --no-ca).
@@ -198,10 +220,76 @@ func (c *RunCmd) Run(out *output.Writer) error {
 		out.Stderr(fmt.Sprintf("onecli: warning: %s", w))
 	}
 
+	// Postgres governance (design: pg-interception): scan env + .env for
+	// postgres URLs (and the libpq PG* group), swap registered ones for
+	// gateway proxy sessions, and fork the heartbeat/cleanup sidecar.
+	// Best-effort by default; with --pg-proxy=required a failure to govern a
+	// matched database aborts the run. (Unreachable in --dry-run: that path
+	// returns above, so required is intentionally a no-op there.)
+	if !c.NoPgProxy {
+		pgRequired := strings.EqualFold(c.PgProxy, "required")
+		sandbox := false
+		if spec, ok := agentSkillDir(c.Args[0]); ok {
+			sandbox = spec.dockerSandbox
+		}
+		if sandbox {
+			// Docker-sandbox agents (e.g. Hermes) run tools in a container
+			// that does not inherit this env, so a swapped DATABASE_URL never
+			// reaches the tool making the DB call. Routing that path is a
+			// phase-3 concern; surface the gap (only when the agent actually
+			// carries a database in its env) rather than pretend the host-env
+			// swap covers it.
+			cwd, _ := os.Getwd()
+			if len(scanPgURLs(env, cwd)) > 0 {
+				out.Stderr("onecli: note: database access from sandboxed tools is not yet routed through OneCLI (phase 3); direct connections bypass governance.")
+			}
+		} else {
+			gwURL, agentToken, ok := "", "", false
+			if proxyURL := firstProxyURL(cfg.Env); proxyURL != "" {
+				gwURL, agentToken, ok = gatewayOriginAndToken(proxyURL)
+			}
+			if !ok {
+				if pgRequired {
+					return fmt.Errorf("--pg-proxy=required but the gateway proxy is unavailable (no usable proxy URL); cannot govern database access")
+				}
+			} else {
+				pgClient := &api.PgGatewayClient{BaseURL: gwURL, AgentToken: agentToken}
+				cwd, _ := os.Getwd()
+				outcome, err := setupPgProxy(out, pgClient, gatewayHost, caPath, env, cwd, pgRequired)
+				if err != nil {
+					return err
+				}
+				if outcome != nil {
+					for name, value := range outcome.Swapped {
+						// Append AFTER the inherited env: POSIX getenv returns
+						// the first match, but Go child processes and libc both
+						// honor later duplicates via exec env ordering — so
+						// strip the original first, matching buildChildEnv.
+						env = removeEnvKey(env, name)
+						env = append(env, name+"="+value)
+					}
+					// Placeholder vars for granted databases the scan did
+					// not cover, plus the index the skill points the agent
+					// at (ONECLI_PG_CONNECTIONS).
+					for name, value := range outcome.Placeholders {
+						env = removeEnvKey(env, name)
+						env = append(env, name+"="+value)
+					}
+					if outcome.IndexJSON != "" {
+						env = removeEnvKey(env, pgIndexVar)
+						env = append(env, pgIndexVar+"="+outcome.IndexJSON)
+					}
+					spawnPgSidecar(gwURL, agentToken, outcome.SessionIDs, outcome.TTLSeconds, outcome.WatchHosts, outcome.GatewayPgAddr)
+				}
+			}
+		}
+	}
+
 	// Enforce mode: fork the loopback auth forwarder, write the sandbox
 	// settings, and extend the agent argv. Fails closed — a broken
 	// forwarder would leave the sandbox with no route to the gateway,
-	// which is worse than an explicit error.
+	// which is worse than an explicit error. Runs AFTER the pg swap so
+	// sandboxed DB clients read the already-governed env.
 	args := c.Args
 	if c.Enforce {
 		a, ok := agentSkillDir(c.Args[0])
@@ -977,6 +1065,41 @@ func firstProxyURL(env map[string]string) string {
 		}
 	}
 	return ""
+}
+
+// gatewayOriginAndToken splits a proxy URL (http://x:aoc_...@host:port)
+// into the gateway HTTP origin and the embedded agent token. The pg
+// session surface lives on the same listener as the HTTP proxy.
+func gatewayOriginAndToken(proxyURL string) (origin, token string, ok bool) {
+	u, err := url.Parse(proxyURL)
+	if err != nil || u.Host == "" || u.User == nil {
+		return "", "", false
+	}
+	password, _ := u.User.Password()
+	// The token rides either the username or the password position
+	// depending on the server's URL shape; take whichever has the prefix.
+	for _, cand := range []string{password, u.User.Username()} {
+		if strings.HasPrefix(cand, "aoc_") {
+			token = cand
+			break
+		}
+	}
+	if token == "" {
+		return "", "", false
+	}
+	return "http://" + u.Host, token, true
+}
+
+// removeEnvKey strips every entry for key from an environ-style slice.
+func removeEnvKey(env []string, key string) []string {
+	out := env[:0]
+	prefix := key + "="
+	for _, kv := range env {
+		if !strings.HasPrefix(kv, prefix) {
+			out = append(out, kv)
+		}
+	}
+	return out
 }
 
 // proxyURLWithHost rewrites the host of a proxy URL, preserving scheme,
