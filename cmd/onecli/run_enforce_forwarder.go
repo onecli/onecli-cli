@@ -214,16 +214,18 @@ func forwardConn(conn net.Conn, upstreamAddr, basicAuth string) {
 		}
 	}
 
-	done := make(chan struct{}, 2)
+	// Pump both directions with half-close semantics: when the client
+	// finishes sending, propagate EOF to the gateway (CloseWrite) but keep
+	// reading the response. Return only when the response stream ends —
+	// tearing down on the first finished direction would truncate
+	// responses to clients that half-close after the request.
 	go func() {
 		_, _ = io.Copy(upstream, br)
-		done <- struct{}{}
+		if tc, ok := upstream.(*net.TCPConn); ok {
+			_ = tc.CloseWrite()
+		}
 	}()
-	go func() {
-		_, _ = io.Copy(conn, upstream)
-		done <- struct{}{}
-	}()
-	<-done
+	_, _ = io.Copy(conn, upstream)
 }
 
 // enforceProcessAlive reports whether pid is still running (signal 0 probe).
