@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.9.0](https://github.com/onecli/onecli-cli/compare/v2.8.1...v2.9.0) (2026-07-29)
+
+
+### Features
+
+* **agents:** grants — the per-agent credential attach surface ([#102](https://github.com/onecli/onecli-cli/issues/102)) ([d8f38aa](https://github.com/onecli/onecli-cli/commit/d8f38aa33ae9db8510d62d3f546c79eecf451935))
+
 ## [2.8.1](https://github.com/onecli/onecli-cli/compare/v2.8.0...v2.8.1) (2026-07-29)
 
 
