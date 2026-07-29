@@ -41,6 +41,14 @@ type CLI struct {
 func main() {
 	out := output.New()
 
+	// Hidden sidecar mode: the enforce-mode auth forwarder forked by
+	// `onecli run --enforce` re-invokes this binary. Handled before kong
+	// so the flag never appears in help or completion.
+	if pid, ok := parseEnforceForwarderArgs(os.Args[1:]); ok {
+		runEnforceForwarder(pid)
+		return
+	}
+
 	// When invoked with no args, --help, or -h, output structured JSON
 	// so agents always get machine-readable output.
 	if len(os.Args) <= 1 || os.Args[1] == "--help" || os.Args[1] == "-h" {

@@ -46,6 +46,7 @@ type RunCmd struct {
 	Agent   string   `optional:"" name:"agent" help:"OneCLI agent identifier (uses default agent if omitted)."`
 	Gateway string   `optional:"" name:"gateway" help:"Gateway host:port override (default: derived from API host)."`
 	NoCA    bool     `optional:"" name:"no-ca" help:"Skip writing the CA cert and CA trust env injection."`
+	Enforce bool     `optional:"" name:"enforce" help:"OS-enforced governance: route the agent's sandboxed egress through the gateway so it cannot be bypassed (Claude Code only)."`
 	DryRun  bool     `optional:"" name:"dry-run" help:"Print resolved env and command without executing."`
 	Args    []string `arg:"" optional:"" name:"command" help:"Command and arguments to execute (after --)."`
 }
@@ -197,9 +198,31 @@ func (c *RunCmd) Run(out *output.Writer) error {
 		out.Stderr(fmt.Sprintf("onecli: warning: %s", w))
 	}
 
+	// Enforce mode: fork the loopback auth forwarder, write the sandbox
+	// settings, and extend the agent argv. Fails closed — a broken
+	// forwarder would leave the sandbox with no route to the gateway,
+	// which is worse than an explicit error.
+	args := c.Args
+	if c.Enforce {
+		a, ok := agentSkillDir(c.Args[0])
+		if !ok || !enforceSupportedAgents[a.agentName] {
+			return fmt.Errorf("--enforce is not supported for %q yet (Claude Code only)", filepath.Base(c.Args[0]))
+		}
+		port, err := spawnEnforceForwarder(firstProxyURL(cfg.Env))
+		if err != nil {
+			return fmt.Errorf("enforce mode unavailable: %w", err)
+		}
+		settingsPath, err := writeEnforceSettings(port)
+		if err != nil {
+			return fmt.Errorf("enforce mode unavailable: %w", err)
+		}
+		args = append(append([]string{}, c.Args...), enforceAgentArgs(settingsPath)...)
+		out.Stderr(fmt.Sprintf("onecli: enforce mode active — sandboxed egress locked to the gateway (forwarder :%d).", port))
+	}
+
 	// Exec — replaces this process so the agent gets direct terminal control.
 	out.Stderr(fmt.Sprintf("onecli: gateway connected. Starting %s...", c.Args[0]))
-	if err := syscall.Exec(binary, c.Args, env); err != nil {
+	if err := syscall.Exec(binary, args, env); err != nil {
 		return fmt.Errorf("could not start %s: %w", c.Args[0], err)
 	}
 	return nil
