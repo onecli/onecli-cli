@@ -20,21 +20,21 @@ import (
 
 // PolicyCmd is `onecli policy` (project scope).
 type PolicyCmd struct {
-	Rules                PolicyRulesCmd                `cmd:"" help:"Manage the project's policy rules (draft → publish)."`
-	Default              PolicyDefaultCmd              `cmd:"" help:"Show or set the project's terminal Default Rule."`
-	Publish              PolicyPublishCmd              `cmd:"" help:"Publish the project's staged draft (all staged changes)."`
-	Status               PolicyStatusCmd               `cmd:"" help:"Show staged changes and the last publish."`
+	Rules                PolicyRulesCmd                `cmd:"" help:"RETIRED at project scope — updated servers answer 410 Gone (project rules are compiled from grants). Attach credentials with 'agents grants'; org rules live under 'org policy'."`
+	Default              PolicyDefaultCmd              `cmd:"" help:"RETIRED at project scope — updated servers answer 410 Gone. The org Default Rule ('org policy default') is the posture."`
+	Publish              PolicyPublishCmd              `cmd:"" help:"RETIRED at project scope — updated servers answer 410 Gone. Grant changes publish immediately; org drafts publish with 'org policy publish'."`
+	Status               PolicyStatusCmd               `cmd:"" help:"RETIRED at project scope — updated servers answer 410 Gone. Use 'agents grants list' and 'org policy status'."`
 	EffectivePermissions PolicyEffectivePermissionsCmd `cmd:"" name:"effective-permissions" help:"Show what the published policy allows for an app, per tool (read-only)."`
 }
 
 // PolicyRulesCmd groups the rule subcommands.
 type PolicyRulesCmd struct {
-	List    PolicyRulesListCmd    `cmd:"" help:"List policy rules (draft by default; --status published = the enforced set)."`
-	Get     PolicyRulesGetCmd     `cmd:"" help:"Get one DRAFT rule by id."`
-	Create  PolicyRulesCreateCmd  `cmd:"" help:"Create a policy rule."`
-	Update  PolicyRulesUpdateCmd  `cmd:"" help:"Update a DRAFT policy rule."`
-	Delete  PolicyRulesDeleteCmd  `cmd:"" help:"Delete a DRAFT policy rule."`
-	Reorder PolicyRulesReorderCmd `cmd:"" help:"Reorder the draft (full id permutation)."`
+	List    PolicyRulesListCmd    `cmd:"" help:"RETIRED at project scope — updated servers answer 410 Gone (project rules are compiled from grants). Use 'agents grants list'; org rules: 'org policy rules list'."`
+	Get     PolicyRulesGetCmd     `cmd:"" help:"RETIRED at project scope — updated servers answer 410 Gone. Use 'agents grants list'."`
+	Create  PolicyRulesCreateCmd  `cmd:"" help:"RETIRED at project scope — updated servers answer 410 Gone. Attach credentials with 'agents grants'; org rules: 'org policy rules create'."`
+	Update  PolicyRulesUpdateCmd  `cmd:"" help:"RETIRED at project scope — updated servers answer 410 Gone. Manage per-tool access with 'agents grants attach-connection --allow/--ask'."`
+	Delete  PolicyRulesDeleteCmd  `cmd:"" help:"RETIRED at project scope — updated servers answer 410 Gone. Detach with 'agents grants detach-connection' / 'detach-secret'."`
+	Reorder PolicyRulesReorderCmd `cmd:"" help:"RETIRED at project scope — updated servers answer 410 Gone. Grants have no ordering; org rules: 'org policy rules reorder'."`
 }
 
 // ── Shared write/publish plumbing (used by the org variants too) ────────────
@@ -198,7 +198,7 @@ func requireProjectForOrgKey(project string) error {
 	}
 	if strings.HasPrefix(loadStoredAPIKey(), "oc_org_") {
 		return fmt.Errorf(
-			"an organization API key needs an explicit project for 'onecli policy' — pass --project <slug>, set ONECLI_PROJECT, or run 'onecli config set project <slug>'",
+			"an organization API key needs an explicit project for this project-scoped command — pass --project <slug>, set ONECLI_PROJECT, or run 'onecli config set project <slug>'",
 		)
 	}
 	return nil
@@ -671,8 +671,8 @@ func (c *PolicyRulesReorderCmd) Run(out *output.Writer) error {
 
 // PolicyDefaultCmd groups the Default Rule subcommands.
 type PolicyDefaultCmd struct {
-	Get PolicyDefaultGetCmd `cmd:"" help:"Show the terminal Default Rule."`
-	Set PolicyDefaultSetCmd `cmd:"" help:"Set the Default Rule's action."`
+	Get PolicyDefaultGetCmd `cmd:"" help:"RETIRED at project scope — updated servers answer 410 Gone. The posture is the org Default Rule: 'org policy default get'."`
+	Set PolicyDefaultSetCmd `cmd:"" help:"RETIRED at project scope — updated servers answer 410 Gone. Set the posture with 'org policy default set --action'."`
 }
 
 // PolicyDefaultGetCmd is `onecli policy default get`.

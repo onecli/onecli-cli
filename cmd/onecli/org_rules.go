@@ -11,13 +11,13 @@ import (
 
 // OrgRulesCmd is the `onecli org rules` command group.
 type OrgRulesCmd struct {
-	List        OrgRulesListCmd        `cmd:"" help:"List all org-scoped policy rules."`
-	Get         OrgRulesGetCmd         `cmd:"" help:"Get a single org-scoped policy rule by ID."`
-	Create      OrgRulesCreateCmd      `cmd:"" help:"Create a new org-scoped policy rule."`
-	Update      OrgRulesUpdateCmd      `cmd:"" help:"Update an org-scoped policy rule."`
-	Delete      OrgRulesDeleteCmd      `cmd:"" help:"Delete an org-scoped policy rule."`
-	Permissions OrgRulesPermissionsCmd `cmd:"" help:"Manage app-level tool permissions."`
-	Overlap     OrgRulesOverlapCmd     `cmd:"" help:"Count custom org rules overlapping an app's hosts."`
+	List        OrgRulesListCmd        `cmd:"" help:"RETIRED — updated servers answer 410 Gone. Use 'org policy rules list'."`
+	Get         OrgRulesGetCmd         `cmd:"" help:"RETIRED — updated servers answer 410 Gone. Use 'org policy rules get'."`
+	Create      OrgRulesCreateCmd      `cmd:"" help:"RETIRED — updated servers answer 410 Gone. Use 'org policy rules create'."`
+	Update      OrgRulesUpdateCmd      `cmd:"" help:"RETIRED — updated servers answer 410 Gone. Use 'org policy rules update'."`
+	Delete      OrgRulesDeleteCmd      `cmd:"" help:"RETIRED — updated servers answer 410 Gone. Use 'org policy rules delete'."`
+	Permissions OrgRulesPermissionsCmd `cmd:"" help:"RETIRED — updated servers answer 410 Gone. Use 'org policy effective-permissions' to read; author app-target rules with 'org policy rules create'."`
+	Overlap     OrgRulesOverlapCmd     `cmd:"" help:"RETIRED — updated servers answer 410 Gone. No replacement — overlap detection lives in the Policy console."`
 }
 
 // OrgRulesOverlapCmd is `onecli org rules overlap`.
@@ -264,8 +264,8 @@ func (c *OrgRulesDeleteCmd) Run(out *output.Writer) error {
 
 // OrgRulesPermissionsCmd is `onecli org rules permissions`.
 type OrgRulesPermissionsCmd struct {
-	Get OrgRulesPermissionsGetCmd `cmd:"" help:"Get tool permissions for a provider."`
-	Set OrgRulesPermissionsSetCmd `cmd:"" help:"Set tool permissions for a provider."`
+	Get OrgRulesPermissionsGetCmd `cmd:"" help:"RETIRED — updated servers answer 410 Gone. Use 'org policy effective-permissions'."`
+	Set OrgRulesPermissionsSetCmd `cmd:"" help:"RETIRED — updated servers answer 410 Gone. Author an app-target rule with 'org policy rules create' instead."`
 }
 
 // OrgRulesPermissionsGetCmd is `onecli org rules permissions get`.

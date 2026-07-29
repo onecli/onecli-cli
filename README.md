@@ -28,17 +28,38 @@ onecli agents create --name "My Agent" --identifier my-agent
 ### Agents
 
 ```
-onecli agents list                                     List all agents
+onecli agents list [--with-grants]                     List all agents (optionally with grants)
 onecli agents get-default                              Get the default agent
 onecli agents create --name X --identifier Y           Create a new agent
 onecli agents delete --id X                            Delete an agent
 onecli agents rename --id X --name Y                   Rename an agent
 onecli agents regenerate-token --id X                  Regenerate access token
 onecli agents credentials --id X                       What the agent can use (read-only)
-onecli agents set-secret-mode --id X --mode selective  Set secret mode
-onecli agents secrets --id X                           RETIRED — see 'agents credentials'
-onecli agents set-secrets --id X --secret-ids a,b      RETIRED — grant with a policy rule
+onecli agents set-secret-mode --id X --mode selective  RETIRED — see 'agents grants'
+onecli agents secrets --id X                           RETIRED — see 'agents grants list'
+onecli agents set-secrets --id X --secret-ids a,b      RETIRED — see 'agents grants attach-secret'
 ```
+
+### Grants (the attach model)
+
+A grant attaches one credential to one agent — the only project-scope policy
+write. An agent starts with nothing and uses exactly what its grants attach.
+Grants are attach INTENT; `agents credentials` is the EFFECTIVE view with
+organization guardrails applied. Changes publish immediately.
+
+```
+onecli agents grants list --id X                       The agent's attached connections + secrets
+onecli agents grants attach-connection --id X \
+  --connection-id Y [--allow t1,t2] [--ask t3]         Attach (no flags = full access)
+onecli agents grants detach-connection --id X --connection-id Y
+onecli agents grants attach-secret --id X --secret-id Y
+onecli agents grants detach-secret --id X --secret-id Y
+onecli apps connections grants --id Y                  Which agents a connection is granted to
+```
+
+Tool IDs come from `onecli apps permission-definition --provider <app>`. A tool
+cannot be in both `--allow` and `--ask`; a grant with every tool set to Never is
+a detach (the server rejects it). `--ask` requires the approvals feature.
 
 ### Secrets
 
@@ -51,20 +72,18 @@ onecli secrets delete --id X                           Delete a secret
 
 ### Rules (legacy model)
 
-Cloud deployments reject these writes (410) — use the `policy` family below.
-Pre-cutover self-hosted servers still accept them.
+Updated servers answer **410 Gone** for every `rules` subcommand. Project access
+is granted per agent (`agents grants`); org guardrails live under `org policy`.
+The commands remain only for pre-cutover self-hosted servers and retire when
+those do.
 
 ```
-onecli rules list                                      RETIRED — see 'policy rules list'
-onecli rules get --id X                                RETIRED — see 'policy rules get'
-onecli rules create --name X --host-pattern Y ...      RETIRED — see 'policy rules create'
-onecli rules update --id X [--action block] ...        RETIRED — see 'policy rules update'
-onecli rules delete --id X                             RETIRED — see 'policy rules delete'
+onecli rules list                                      RETIRED — see 'agents grants'
+onecli rules get --id X                                RETIRED — see 'agents grants'
+onecli rules create --name X --host-pattern Y ...      RETIRED — see 'agents grants attach-connection'
+onecli rules update --id X [--action block] ...        RETIRED — see 'agents grants attach-connection'
+onecli rules delete --id X                             RETIRED — see 'agents grants detach-connection'
 ```
-
-Every `rules` subcommand answers **410 Gone** on an updated server — the policy
-engine replaced them. They remain only for pre-cutover self-hosted servers,
-where `policy` is not yet available, and retire when those do.
 
 ### Policy reflections (read-only)
 
@@ -79,24 +98,20 @@ onecli agents credentials --id X                            What one agent can u
 onecli apps connections agent-access --id X                 Who can reach a connection
 ```
 
-### Policy (the policy engine)
+### Policy (project scope — RETIRED)
 
-Rules stage into a DRAFT and enforce on publish. Writes auto-publish when the
-draft has no other staged changes (`--no-publish` stages; `--publish-all`
-publishes everything).
+Updated servers answer **410 Gone** for project-scope policy authoring: project
+rules are compiled from agent credential grants, never authored directly. Use
+`agents grants` for project access and `org policy` (below, under Organization)
+for org guardrails. The commands remain only for self-hosted servers that
+predate the attach model.
 
 ```
-onecli policy rules list [--status published]          List rules (draft or the enforced set)
-onecli policy rules get --id X                         Get a DRAFT rule
-onecli policy rules create --name X --action allow \
-  --targets '[{"kind":"network","hostPattern":"api.example.com"}]'
-onecli policy rules update --id X [--action block]     Update a DRAFT rule
-onecli policy rules delete --id X                      Delete a DRAFT rule
-onecli policy rules reorder --ordered-ids '[...]'      Reorder (every draft id exactly once)
-onecli policy default get                              Show the terminal Default Rule
-onecli policy default set --action allow|block         Set the Default Rule's action
-onecli policy publish                                  Publish the whole staged draft
-onecli policy status                                   Staged diff + last publish
+onecli policy rules ...                                RETIRED — see 'agents grants'
+onecli policy default ...                              RETIRED — see 'org policy default'
+onecli policy publish                                  RETIRED — grants publish immediately
+onecli policy status                                   RETIRED — see 'agents grants list'
+onecli policy effective-permissions --provider gmail   Per-tool verdicts (still live, read-only)
 ```
 
 ### Organization

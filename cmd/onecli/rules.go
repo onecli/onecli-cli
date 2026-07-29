@@ -11,19 +11,19 @@ import (
 
 // RulesCmd is the `onecli rules` command group.
 type RulesCmd struct {
-	List        RulesListCmd        `cmd:"" help:"List all policy rules."`
-	Get         RulesGetCmd         `cmd:"" help:"Get a single policy rule by ID."`
-	Create      RulesCreateCmd      `cmd:"" help:"Create a new policy rule."`
-	Update      RulesUpdateCmd      `cmd:"" help:"Update an existing policy rule."`
-	Delete      RulesDeleteCmd      `cmd:"" help:"Delete a policy rule."`
-	Permissions RulesPermissionsCmd `cmd:"" help:"Manage app-level tool permissions (supports per-agent overrides)."`
-	Overlap     RulesOverlapCmd     `cmd:"" help:"Count custom rules overlapping an app's hosts."`
+	List        RulesListCmd        `cmd:"" help:"RETIRED — updated servers answer 410 Gone. Grant access with 'agents grants'; read it with 'agents credentials'."`
+	Get         RulesGetCmd         `cmd:"" help:"RETIRED — updated servers answer 410 Gone. Grant access with 'agents grants'."`
+	Create      RulesCreateCmd      `cmd:"" help:"RETIRED — updated servers answer 410 Gone. Attach credentials with 'agents grants attach-connection' / 'attach-secret'."`
+	Update      RulesUpdateCmd      `cmd:"" help:"RETIRED — updated servers answer 410 Gone. Manage per-tool access with 'agents grants attach-connection --allow/--ask'."`
+	Delete      RulesDeleteCmd      `cmd:"" help:"RETIRED — updated servers answer 410 Gone. Detach with 'agents grants detach-connection' / 'detach-secret'."`
+	Permissions RulesPermissionsCmd `cmd:"" help:"RETIRED — updated servers answer 410 Gone. Read the catalog with 'apps permission-definition'; set per-tool access with 'agents grants'."`
+	Overlap     RulesOverlapCmd     `cmd:"" help:"RETIRED — updated servers answer 410 Gone. No replacement — overlap detection lives in the organization Policy console."`
 }
 
 // RulesPermissionsCmd is `onecli rules permissions`.
 type RulesPermissionsCmd struct {
-	Get RulesPermissionsGetCmd `cmd:"" help:"Get layered tool permissions for a provider."`
-	Set RulesPermissionsSetCmd `cmd:"" help:"Set tool permissions for a provider (optionally for one agent)."`
+	Get RulesPermissionsGetCmd `cmd:"" help:"RETIRED — updated servers answer 410 Gone. Use 'policy effective-permissions' to read; set per-tool access with 'agents grants'."`
+	Set RulesPermissionsSetCmd `cmd:"" help:"RETIRED — updated servers answer 410 Gone. Set per-tool access with 'agents grants attach-connection --allow/--ask'."`
 }
 
 // RulesPermissionsGetCmd is `onecli rules permissions get`.
