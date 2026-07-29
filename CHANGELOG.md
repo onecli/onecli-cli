@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.8.0](https://github.com/onecli/onecli-cli/compare/v2.7.0...v2.8.0) (2026-07-29)
+
+
+### Features
+
+* **run:** --enforce - OS-enforced gateway egress via Claude Code's sandbox ([#98](https://github.com/onecli/onecli-cli/issues/98)) ([2b7b5e1](https://github.com/onecli/onecli-cli/commit/2b7b5e1cb3c256f34ecdad572dd20442b62192fa))
+
 ## [2.7.0](https://github.com/onecli/onecli-cli/compare/v2.6.0...v2.7.0) (2026-07-25)
 
 
