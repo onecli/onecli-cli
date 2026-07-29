@@ -26,7 +26,6 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
-	"syscall"
 	"time"
 )
 
@@ -87,7 +86,7 @@ func spawnEnforceForwarder(gatewayProxyURL string) (uint16, error) {
 	cmd.Stdin = nil
 	cmd.Stdout = nil
 	cmd.Stderr = nil
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	cmd.SysProcAttr = detachedSysProcAttr()
 	if err := cmd.Start(); err != nil {
 		return 0, fmt.Errorf("starting forwarder: %w", err)
 	}
@@ -228,11 +227,7 @@ func forwardConn(conn net.Conn, upstreamAddr, basicAuth string) {
 	_, _ = io.Copy(conn, upstream)
 }
 
-// enforceProcessAlive reports whether pid is still running (signal 0 probe).
+// enforceProcessAlive reports whether pid is still running.
 func enforceProcessAlive(pid int) bool {
-	if pid <= 0 {
-		return false
-	}
-	err := syscall.Kill(pid, 0)
-	return err == nil || err == syscall.EPERM
+	return processAliveByPID(pid)
 }
