@@ -19,11 +19,12 @@ type AgentsCmd struct {
 	Delete          AgentsDeleteCmd          `cmd:"" help:"Delete an agent."`
 	Rename          AgentsRenameCmd          `cmd:"" help:"Rename an agent."`
 	RegenerateToken AgentsRegenerateTokenCmd `cmd:"" name:"regenerate-token" help:"Regenerate an agent's access token."`
-	Secrets         AgentsSecretsCmd         `cmd:"" help:"List secrets assigned to an agent."`
-	SetSecrets      AgentsSetSecretsCmd      `cmd:"" name:"set-secrets" help:"Set secrets assigned to an agent."`
-	SetSecretMode   AgentsSetSecretModeCmd   `cmd:"" name:"set-secret-mode" help:"Set an agent's secret mode."`
-	GranularAccess  AgentsGranularAccessCmd  `cmd:"" name:"granular-access" help:"Show per-agent granular-access policies across the project."`
-	Connections     AgentsConnectionsCmd     `cmd:"" help:"Manage an agent's app-connection assignments (RETIRED — updated servers answer 410; see 'onecli agents credentials')."`
+	Secrets         AgentsSecretsCmd         `cmd:"" help:"RETIRED — updated servers answer 410 Gone. Use 'agents grants list' (attached) or 'agents credentials' (effective)."`
+	SetSecrets      AgentsSetSecretsCmd      `cmd:"" name:"set-secrets" help:"RETIRED — updated servers answer 410 Gone. Attach with 'agents grants attach-secret'."`
+	SetSecretMode   AgentsSetSecretModeCmd   `cmd:"" name:"set-secret-mode" help:"RETIRED — updated servers answer 410 Gone; agents are always selective. Attach credentials with 'agents grants'."`
+	GranularAccess  AgentsGranularAccessCmd  `cmd:"" name:"granular-access" help:"RETIRED — updated servers answer 410 Gone. Resource scoping rides the granting rule's conditions; see 'agents credentials'."`
+	Connections     AgentsConnectionsCmd     `cmd:"" help:"RETIRED — updated servers answer 410 Gone. Use 'agents grants' to attach connections."`
+	Grants          AgentsGrantsCmd          `cmd:"" help:"Manage the agent's credential grants (attach model): attach/detach app connections, secrets, and LLM keys."`
 	Credentials     AgentsCredentialsCmd     `cmd:"" help:"Show which credentials the agent can use and what each one can do (read-only)."`
 }
 
@@ -73,8 +74,8 @@ func (c *AgentsGranularAccessCmd) Run(out *output.Writer) error {
 
 // AgentsConnectionsCmd is the `onecli agents connections` command group.
 type AgentsConnectionsCmd struct {
-	Get AgentsConnectionsGetCmd `cmd:"" help:"Get an agent's app-connection assignments."`
-	Set AgentsConnectionsSetCmd `cmd:"" help:"Replace an agent's app-connection assignments (raw JSON)."`
+	Get AgentsConnectionsGetCmd `cmd:"" help:"RETIRED — updated servers answer 410 Gone. Use 'agents grants list'."`
+	Set AgentsConnectionsSetCmd `cmd:"" help:"RETIRED — updated servers answer 410 Gone. Attach with 'agents grants attach-connection'."`
 }
 
 // AgentsConnectionsGetCmd is `onecli agents connections get`.
@@ -128,10 +129,11 @@ func (c *AgentsConnectionsSetCmd) Run(out *output.Writer) error {
 
 // AgentsListCmd is `onecli agents list`.
 type AgentsListCmd struct {
-	Project string `optional:"" short:"p" help:"Project slug."`
-	Fields  string `optional:"" help:"Comma-separated list of fields to include in output."`
-	Quiet   string `optional:"" name:"quiet" help:"Output only the specified field, one per line."`
-	Max     int    `optional:"" default:"20" help:"Maximum number of results to return."`
+	Project    string `optional:"" short:"p" help:"Project slug."`
+	Fields     string `optional:"" help:"Comma-separated list of fields to include in output."`
+	Quiet      string `optional:"" name:"quiet" help:"Output only the specified field, one per line."`
+	Max        int    `optional:"" default:"20" help:"Maximum number of results to return."`
+	WithGrants bool   `optional:"" name:"with-grants" help:"Include each agent's grants summary (attached connections, secrets, LLM keys)."`
 }
 
 func (c *AgentsListCmd) Run(out *output.Writer) error {
@@ -142,6 +144,19 @@ func (c *AgentsListCmd) Run(out *output.Writer) error {
 	client, err := newClient()
 	if err != nil {
 		return err
+	}
+	if c.WithGrants {
+		agents, err := client.ListAgentsWithGrantsSummary(newContext(), project)
+		if err != nil {
+			return err
+		}
+		if c.Max > 0 && len(agents) > c.Max {
+			agents = agents[:c.Max]
+		}
+		if c.Quiet != "" {
+			return out.WriteQuiet(agents, c.Quiet)
+		}
+		return out.WriteFiltered(agents, c.Fields)
 	}
 	agents, err := client.ListAgents(newContext(), project)
 	if err != nil {

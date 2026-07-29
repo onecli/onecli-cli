@@ -36,66 +36,106 @@ onecli agents create --name "My Agent" --identifier my-agent
 # 4. Get the agent ID
 onecli agents list --quiet id
 
-# 5. Assign the secret to the agent
-# Grant a credential by naming the agent in an allow rule; `set-secrets` is retired.
-onecli policy rules create --name "Anthropic for worker" --action allow \
-  --identities '[{"type":"agent","id":"<agent-id>"}]' \
-  --targets '[{"kind":"secret","secretId":"<secret-id>"}]' 
+# 5. Attach the secret to the agent (the attach model's write path)
+onecli agents grants attach-secret --id <agent-id> --secret-id <secret-id>
 ```
 
-### Block an endpoint
+### Grant credentials to an agent (the attach model)
+
+Project access is granted per agent. A grant attaches one credential; the
+server compiles grants into policy rules — you never author project rules.
 
 ```bash
-onecli policy rules create --name "Block Gmail send" --action block \
+# Attach an app connection with full access (every catalog tool)
+onecli agents grants attach-connection --id <agent-id> --connection-id <conn-id>
+
+# Attach with per-tool access: --allow always runs, --ask needs approval,
+# everything else is blocked. Tool IDs come from the app's catalog:
+onecli apps permission-definition --provider gmail
+onecli agents grants attach-connection --id <agent-id> --connection-id <conn-id> \
+  --allow search_messages,get_message --ask send_email
+
+# Attach a secret or LLM key (no per-tool axis)
+onecli agents grants attach-secret --id <agent-id> --secret-id <secret-id>
+
+# Read the attach list, and the whole project at once
+onecli agents grants list --id <agent-id>
+onecli agents list --with-grants
+```
+
+Grant invariants (make these explicit — they are not intuitable):
+
+- Changes publish IMMEDIATELY — there is no draft or publish step at project
+  scope.
+- A tool cannot be in both `--allow` and `--ask` (422). A grant with every
+  tool set to Never is a detach — the server rejects it (422); run
+  `agents grants detach-connection` instead.
+- `--ask` (approval-gated tools) requires the approvals feature — a 403
+  names the plan; do not retry.
+- `agents grants list` is attach INTENT; `agents credentials` is the
+  EFFECTIVE view with organization guardrails applied. When they disagree,
+  an org rule is capping the grant.
+- Always use `--dry-run` first on mutating grant commands.
+
+### Block or rate-limit an endpoint (organization rules)
+
+Org-wide guardrails are policy rules, authored by org admins with an
+organization API key:
+
+```bash
+onecli org policy rules create --name "Block Gmail send" --action block \
   --targets '[{"kind":"network","hostPattern":"gmail.googleapis.com","pathPattern":"/gmail/v1/users/me/messages/send","method":"POST"}]'
-```
-
-### Rate limit an endpoint
-
-```bash
-onecli policy rules create --name "Limit Anthropic calls" --action allow \
+onecli org policy rules create --name "Limit Anthropic calls" --action allow \
   --rate-limit 100 --rate-limit-window hour \
   --targets '[{"kind":"network","hostPattern":"api.anthropic.com"}]'
+onecli org policy status
 ```
 
-The legacy `rules create` answers 410 on an updated server.
+Org policy invariants:
 
-Cloud deployments reject legacy `rules` writes (410) — use the `policy`
-family there. Pre-cutover self-hosted servers still accept legacy writes and
-reject `policy` writes (403); org policy routes are Cloud/Enterprise-only.
+- Org writes land in a DRAFT and AUTO-PUBLISH only when the draft has no
+  other staged changes; otherwise the publish is withheld (`publishSkipped`
+  in the output) — review with `org policy status`, then `org policy publish`
+  or re-run with `--publish-all`.
+- Enforced state = `org policy rules list --status published`. Compare rules
+  across draft/published by `logicalId`, NEVER by `id`.
+- `org policy rules reorder --ordered-ids` must name EVERY non-default draft
+  rule exactly once.
 
-### Manage policy-engine rules (cloud)
+Retired surfaces (updated servers answer 410 Gone): the legacy `rules` and
+`org rules` families, `org settings`, `agents set-secret-mode` /
+`set-secrets` / `connections set`, and ALL project-scope `policy` writes
+(`policy rules|default|publish|status`) — project rules are compiled from
+grants.
 
-```bash
-onecli policy rules create --name "Limit Anthropic calls" --action allow \
-  --targets '[{"kind":"network","hostPattern":"api.anthropic.com"}]' \
-  --rate-limit 100 --rate-limit-window hour
-onecli policy status
+### Multiple accounts of one app (gateway 409 protocol)
+
+When an agent's request could be served by two or more attached accounts of
+the same app, the gateway answers `409` with a self-describing JSON body:
+
+```json
+{
+  "error": "multiple_connections",
+  "connections": [{"id": "conn_abc", "label": "Work", "provider": "gmail"}],
+  "header": "x-onecli-connection-id",
+  "example": "x-onecli-connection-id: conn_abc"
+}
 ```
 
-Policy invariants (make these explicit — they are not intuitable):
-
-- Writes land in a DRAFT and AUTO-PUBLISH only when the draft has no other
-  staged changes; otherwise the publish is withheld (`publishSkipped` in the
-  output) — review with `policy status`, then `policy publish` or re-run
-  with `--publish-all`. A publish snapshots the WHOLE draft, including
-  changes staged by other users.
-- Enforced state = `policy rules list --status published`. Compare rules
-  across draft/published by `logicalId`, NEVER by `id` (published row ids
-  regenerate on every publish).
-- `policy rules reorder --ordered-ids` must name EVERY non-default draft
-  rule exactly once (including system-managed blocklist/equipment rows the
-  web console hides) — take the full list from
-  `policy rules list --quiet id` (the default is unlimited).
-- Always use `--dry-run` first on mutating policy commands.
-- On pre-cutover self-hosted servers, `policy rules list` shows a staging
-  store that is NOT enforced (the legacy model still enforces there).
+Retry the identical request with the `x-onecli-connection-id` header set to
+one of the listed ids (pick by label/context, or ask the user). Successful
+responses advertise the choice list in the `x-onecli-connections` response
+header. A `404 connection_not_found` means the chosen id is stale — re-pick
+from its `connections` list. Permissions are per account: the same tool can
+be allowed on one account and blocked on another. Connection ids also come
+from `onecli apps connections list`.
 
 ### Check agent configuration
 
 ```bash
-onecli agents list --fields id,name,secretMode
-onecli agents credentials --id <agent-id>   # what the policy actually grants
+onecli agents list --with-grants
+onecli agents grants list --id <agent-id>   # attach intent
+onecli agents credentials --id <agent-id>   # effective (org guardrails applied)
 ```
 
 ### View and regenerate API key

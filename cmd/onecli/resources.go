@@ -52,8 +52,8 @@ func (c *CountsCmd) Run(out *output.Writer) error {
 
 // OrgSettingsCmd is the `onecli org settings` command group.
 type OrgSettingsCmd struct {
-	Get OrgSettingsGetCmd `cmd:"" help:"Get organization settings (policy mode)."`
-	Set OrgSettingsSetCmd `cmd:"" help:"Update organization settings."`
+	Get OrgSettingsGetCmd `cmd:"" help:"RETIRED — updated servers answer 410 Gone. The allow/deny posture is the Default Rule — use 'org policy default'."`
+	Set OrgSettingsSetCmd `cmd:"" help:"RETIRED — updated servers answer 410 Gone. Set the posture with 'org policy default set --action'."`
 }
 
 // OrgSettingsGetCmd is `onecli org settings get`.

@@ -121,7 +121,7 @@ func handleError(out *output.Writer, err error) {
 			_ = out.ErrorWithAction(
 				exitcode.CodeGone,
 				apiErr.Message,
-				"onecli policy --help (org rules: 'onecli org policy --help')",
+				"project access: 'onecli agents grants --help' — org rules: 'onecli org policy --help'",
 			)
 			os.Exit(exitcode.Error)
 		case 422:

@@ -7,5 +7,5 @@ type OrgCmd struct {
 	Policy      OrgPolicyCmd      `cmd:"" help:"Manage org policy rules on the policy engine (draft → publish)."`
 	Connections OrgConnectionsCmd `cmd:"" help:"Manage org-scoped connections."`
 	Apps        OrgAppsCmd        `cmd:"" help:"Manage org-scoped app configuration."`
-	Settings    OrgSettingsCmd    `cmd:"" help:"Manage organization settings (policy mode)."`
+	Settings    OrgSettingsCmd    `cmd:"" help:"RETIRED — updated servers answer 410 Gone. The allow/deny posture is the org Default Rule ('org policy default')."`
 }
