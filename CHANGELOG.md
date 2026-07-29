@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.8.1](https://github.com/onecli/onecli-cli/compare/v2.8.0...v2.8.1) (2026-07-29)
+
+
+### Bug Fixes
+
+* **build:** restore the Windows build broken by the enforce forwarder ([#100](https://github.com/onecli/onecli-cli/issues/100)) ([38e2b84](https://github.com/onecli/onecli-cli/commit/38e2b84f44d8e9632502c488e55187eaecc5cdf4))
+
 ## [2.8.0](https://github.com/onecli/onecli-cli/compare/v2.7.0...v2.8.0) (2026-07-29)
 
 
