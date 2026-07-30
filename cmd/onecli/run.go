@@ -157,6 +157,15 @@ func (c *RunCmd) Run(out *output.Writer) error {
 			maybeInstallGatewayPlugin(out, a.agentName, a.baseDir)
 		}
 
+		// Agents that refuse to start without a provider key (e.g. OpenClaw)
+		// get a placeholder — the gateway swaps in the real key per request.
+		// A key already in the user's shell wins (it passes through
+		// buildChildEnv today for every agent, and the gateway replaces it on
+		// the wire either way).
+		if a.needsAnthropicKey {
+			env = ensureEnv(env, "ANTHROPIC_API_KEY", anthropicKeyPlaceholder)
+		}
+
 		// Electron-based agents (e.g. Cursor) ignore embedded user:pass in
 		// HTTPS_PROXY and show a native auth dialog. Inject proxy credentials
 		// into the app's VS Code-style settings.json instead.
@@ -451,6 +460,7 @@ type agentSpec struct {
 	skipHook          bool   // true for agents that don't support Claude Code-style UserPromptSubmit hooks.
 	pluginGateway     bool   // true for agents that load the transform_tool_result recovery plugin (e.g. Hermes).
 	dockerSandbox     bool   // true for agents that run tools in a Docker sandbox needing TERMINAL_DOCKER_* injection.
+	needsAnthropicKey bool   // true for agents that refuse to start without a provider key in the env (e.g. OpenClaw); a placeholder is ensured, the gateway swaps in the real key per request.
 	nativeProxyConfig string // home-relative dir with a TOML config needing proxy_url injection (e.g. ".codex").
 	hooksFile         string // home-relative hook registration file; empty means Claude Code-style <baseDir>/settings.json.
 }
@@ -469,7 +479,28 @@ var supportedAgents = []struct {
 	// own (not Claude-style settings.json), so the hook install is skipped.
 	// Its long-lived process is `openclaw gateway run`, and it honors the
 	// injected proxy env via undici's EnvHttpProxyAgent.
-	{[]string{"openclaw"}, agentSpec{agentName: "OpenClaw", baseDir: ".openclaw", skipHook: true}},
+	{[]string{"openclaw"}, agentSpec{agentName: "OpenClaw", baseDir: ".openclaw", skipHook: true, needsAnthropicKey: true}},
+}
+
+// anthropicKeyPlaceholder satisfies agents that refuse to start without a
+// provider key in their environment (needsAnthropicKey). It is never a real
+// credential: the gateway replaces x-api-key on every injected request, so
+// this value exists only to pass the agent's local boot check — and is
+// self-describing if it ever surfaces in an upstream 401.
+const anthropicKeyPlaceholder = "sk-ant-onecli-gateway-placeholder"
+
+// ensureEnv appends key=value when key is absent. An existing entry wins —
+// POSIX getenv returns the first match, and a user's own shell value (which
+// buildChildEnv deliberately passes through) must keep doing what it does
+// today for every agent.
+func ensureEnv(env []string, key, value string) []string {
+	prefix := key + "="
+	for _, kv := range env {
+		if strings.HasPrefix(kv, prefix) {
+			return env
+		}
+	}
+	return append(env, prefix+value)
 }
 
 // agentSkillDir returns the integration spec for a known agent command, or
