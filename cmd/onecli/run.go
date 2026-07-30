@@ -45,7 +45,7 @@ type RunCmd struct {
 	Agent   string   `optional:"" name:"agent" help:"OneCLI agent identifier (default: ONECLI_AGENT env, then 'onecli config set agent', then the project's default agent)."`
 	Gateway string   `optional:"" name:"gateway" help:"Gateway host:port override (default: derived from API host)."`
 	NoCA    bool     `optional:"" name:"no-ca" help:"Skip writing the CA cert and CA trust env injection."`
-	Enforce bool     `optional:"" name:"enforce" help:"OS-enforced governance: route the agent's sandboxed egress through the gateway so it cannot be bypassed (Claude Code only)."`
+	Enforce bool     `optional:"" name:"enforce" help:"OS-enforced governance: sandbox the agent so all egress is routed through the gateway and cannot be bypassed."`
 	DryRun  bool     `optional:"" name:"dry-run" help:"Print resolved env and command without executing."`
 	Args    []string `arg:"" optional:"" name:"command" help:"Command and arguments to execute (after --)."`
 }
@@ -136,10 +136,47 @@ func (c *RunCmd) Run(out *output.Writer) error {
 		}
 	}
 
+	// Enforce mode routes one of two ways. Agents with a cooperating
+	// OS sandbox (Claude Code) keep the native integration: their own
+	// sandbox becomes the enforcement layer via --settings. Everything
+	// else gets the OneCLI-owned sandbox wrap (run_enforce_wrap.go).
+	// The wrap decision must happen HERE — before the child env and any
+	// agent config injections are derived from cfg.Env — because the
+	// wrapped process can only dial loopback, so every proxy URL has to
+	// be repointed at the forwarder first. Both paths fail closed.
+	enforceNative := false
+	wrapProfilePath := ""
+	var wrapPort uint16
+	if c.Enforce {
+		spec, known := agentSkillDir(c.Args[0])
+		switch {
+		case known && enforceSupportedAgents[spec.agentName]:
+			enforceNative = true
+		case known && spec.dockerSandbox:
+			// Tools run in a Docker container OUTSIDE any host sandbox
+			// (and the wrap denies docker.sock as an egress bypass), so
+			// the wrap cannot govern this agent. Fail closed.
+			return fmt.Errorf("--enforce is not supported for %s: its tools run in a Docker sandbox the OS sandbox cannot govern", spec.agentName)
+		default:
+			wrapProfilePath, wrapPort, err = resolveEnforceWrap(cfg.Env)
+			if err != nil {
+				return fmt.Errorf("enforce mode unavailable: %w", err)
+			}
+		}
+	}
+
 	// Build child environment.
 	env := buildChildEnv(os.Environ(), cfg.Env, caPath)
 
 	env = append(env, "ONECLI_GATEWAY=true")
+
+	// When the gateway routes Node's own egress via NODE_USE_ENV_PROXY, Node
+	// prints a one-time "[UNDICI-EHPA] EnvHttpProxyAgent is experimental"
+	// warning to stderr on startup — the mechanism announcing itself, not an
+	// error. Mute just that warning code (Node 22+ --disable-warning) so
+	// gateway plumbing doesn't leak noise into the agent's output. Scoped to
+	// the flag's presence so we never alter Node behavior otherwise.
+	env = suppressUndiciProxyWarning(env)
 
 	// For known agents, fetch the agent-specific skill variant and install
 	// to the agent's skill directory. Also optionally register a hook.
@@ -207,16 +244,12 @@ func (c *RunCmd) Run(out *output.Writer) error {
 		out.Stderr(fmt.Sprintf("onecli: warning: %s", w))
 	}
 
-	// Enforce mode: fork the loopback auth forwarder, write the sandbox
-	// settings, and extend the agent argv. Fails closed — a broken
-	// forwarder would leave the sandbox with no route to the gateway,
-	// which is worse than an explicit error.
+	// Native enforce path: fork the loopback auth forwarder, write the
+	// sandbox settings, and extend the agent argv. Fails closed — a
+	// broken forwarder would leave the sandbox with no route to the
+	// gateway, which is worse than an explicit error.
 	args := c.Args
-	if c.Enforce {
-		a, ok := agentSkillDir(c.Args[0])
-		if !ok || !enforceSupportedAgents[a.agentName] {
-			return fmt.Errorf("--enforce is not supported for %q yet (Claude Code only)", filepath.Base(c.Args[0]))
-		}
+	if enforceNative {
 		port, err := spawnEnforceForwarder(firstProxyURL(cfg.Env))
 		if err != nil {
 			return fmt.Errorf("enforce mode unavailable: %w", err)
@@ -229,9 +262,24 @@ func (c *RunCmd) Run(out *output.Writer) error {
 		out.Stderr(fmt.Sprintf("onecli: enforce mode active — sandboxed egress locked to the gateway (forwarder :%d).", port))
 	}
 
+	// Wrap enforce path: exec sandbox-exec around the agent so the OS
+	// confines the whole process tree to loopback-only egress.
+	execBinary := binary
+	if wrapProfilePath != "" {
+		execBinary, err = enforceWrapLauncher()
+		if err != nil {
+			return fmt.Errorf("enforce mode unavailable: %w", err)
+		}
+		args = enforceWrapArgv(wrapProfilePath, binary, c.Args[1:], agentFramework)
+		if notice := enforceWrapNotice(agentFramework); notice != "" {
+			out.Stderr(notice)
+		}
+		out.Stderr(fmt.Sprintf("onecli: enforce mode active — all process egress locked to the gateway (forwarder :%d).", wrapPort))
+	}
+
 	// Exec — replaces this process so the agent gets direct terminal control.
 	out.Stderr(fmt.Sprintf("onecli: gateway connected. Starting %s...", c.Args[0]))
-	if err := syscall.Exec(binary, args, env); err != nil {
+	if err := syscall.Exec(execBinary, args, env); err != nil {
 		return fmt.Errorf("could not start %s: %w", c.Args[0], err)
 	}
 	return nil
@@ -361,6 +409,46 @@ func buildChildEnv(current []string, serverEnv map[string]string, caPath string)
 	}
 
 	return out
+}
+
+// undiciWarningFlag mutes Node's experimental EnvHttpProxyAgent warning by its
+// stable code (Node 22+). Scoped to a single code so real warnings still show.
+const undiciWarningFlag = "--disable-warning=UNDICI-EHPA"
+
+// suppressUndiciProxyWarning appends undiciWarningFlag to NODE_OPTIONS, but only
+// when the gateway has enabled Node's env-proxy support (NODE_USE_ENV_PROXY) —
+// the setting that triggers the warning. It edits an existing NODE_OPTIONS in
+// place (preserving the user's flags) or appends a new one, and is a no-op if
+// the flag is already present. POSIX getenv returns the first match, so editing
+// in place rather than appending a second NODE_OPTIONS matters.
+func suppressUndiciProxyWarning(env []string) []string {
+	hasProxyFlag := false
+	for _, kv := range env {
+		if strings.HasPrefix(kv, "NODE_USE_ENV_PROXY=") {
+			hasProxyFlag = true
+			break
+		}
+	}
+	if !hasProxyFlag {
+		return env
+	}
+	const key = "NODE_OPTIONS="
+	for i, kv := range env {
+		if !strings.HasPrefix(kv, key) {
+			continue
+		}
+		existing := kv[len(key):]
+		if strings.Contains(existing, undiciWarningFlag) {
+			return env
+		}
+		if existing == "" {
+			env[i] = key + undiciWarningFlag
+		} else {
+			env[i] = key + existing + " " + undiciWarningFlag
+		}
+		return env
+	}
+	return append(env, key+undiciWarningFlag)
 }
 
 // proxyEnvKeys are the proxy URL env vars (both casings) the gateway sets.

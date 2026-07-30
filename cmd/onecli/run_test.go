@@ -213,6 +213,57 @@ func TestCodexSkipsGatewayHook(t *testing.T) {
 	}
 }
 
+func TestSuppressUndiciProxyWarning(t *testing.T) {
+	t.Run("no-op without NODE_USE_ENV_PROXY", func(t *testing.T) {
+		in := []string{"HOME=/h", "NODE_OPTIONS=--foo"}
+		out := suppressUndiciProxyWarning(in)
+		if v, _ := envValue(out, "NODE_OPTIONS"); v != "--foo" {
+			t.Errorf("NODE_OPTIONS = %q, want untouched --foo", v)
+		}
+	})
+
+	t.Run("adds NODE_OPTIONS when proxy flag present and none set", func(t *testing.T) {
+		out := suppressUndiciProxyWarning([]string{"NODE_USE_ENV_PROXY=1"})
+		if v, ok := envValue(out, "NODE_OPTIONS"); !ok || v != undiciWarningFlag {
+			t.Errorf("NODE_OPTIONS = %q (present=%v), want %q", v, ok, undiciWarningFlag)
+		}
+	})
+
+	t.Run("appends to existing NODE_OPTIONS in place", func(t *testing.T) {
+		out := suppressUndiciProxyWarning([]string{"NODE_USE_ENV_PROXY=1", "NODE_OPTIONS=--max-old-space-size=4096"})
+		v, _ := envValue(out, "NODE_OPTIONS")
+		if v != "--max-old-space-size=4096 "+undiciWarningFlag {
+			t.Errorf("NODE_OPTIONS = %q, want existing flag preserved + suppression", v)
+		}
+		// Must not create a second NODE_OPTIONS (POSIX first-match ambiguity).
+		n := 0
+		for _, kv := range out {
+			if strings.HasPrefix(kv, "NODE_OPTIONS=") {
+				n++
+			}
+		}
+		if n != 1 {
+			t.Errorf("NODE_OPTIONS entries = %d, want 1", n)
+		}
+	})
+
+	t.Run("idempotent when already present", func(t *testing.T) {
+		in := []string{"NODE_USE_ENV_PROXY=1", "NODE_OPTIONS=" + undiciWarningFlag}
+		out := suppressUndiciProxyWarning(in)
+		v, _ := envValue(out, "NODE_OPTIONS")
+		if v != undiciWarningFlag {
+			t.Errorf("NODE_OPTIONS = %q, want unchanged (no double-add)", v)
+		}
+	})
+
+	t.Run("fills an empty NODE_OPTIONS", func(t *testing.T) {
+		out := suppressUndiciProxyWarning([]string{"NODE_USE_ENV_PROXY=1", "NODE_OPTIONS="})
+		if v, _ := envValue(out, "NODE_OPTIONS"); v != undiciWarningFlag {
+			t.Errorf("NODE_OPTIONS = %q, want %q", v, undiciWarningFlag)
+		}
+	})
+}
+
 func TestProxyURLWithHost(t *testing.T) {
 	tests := []struct{ name, raw, host, want string }{
 		{"rewrites host keeping port+creds", "http://aoc_tok:x@127.0.0.1:10255", "host.docker.internal", "http://aoc_tok:x@host.docker.internal:10255"},

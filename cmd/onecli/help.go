@@ -452,6 +452,9 @@ func (cmd *HelpCmd) Run(out *output.Writer) error {
 			{Name: "auth regenerate-api-key", Description: "Regenerate your API key."},
 			{Name: "config get <key>", Description: "Get a config value. Keys: api-host, project, agent."},
 			{Name: "config set <key> <value>", Description: "Set a config value. Keys: api-host, project, agent."},
+			{Name: "sandbox audit", Description: "Red-team the enforce-mode sandbox: attempt every known egress bypass and report which the OS actually stops. Exits non-zero if any hole is found.", Args: []ArgInfo{
+				{Name: "<agent>", Description: "Agent to audit (codex, cursor, claude, ...). Defaults to the OneCLI-owned sandbox."},
+			}},
 			{Name: "migrate", Description: "Migrate data to OneCLI Cloud.", Args: []ArgInfo{
 				{Name: "--cloud-key", Required: true, Description: "OneCLI Cloud API key."},
 			}},
