@@ -36,16 +36,26 @@ type CLI struct {
 	Auth     AuthCmd     `cmd:"" help:"Manage authentication."`
 	Config   ConfigCmd   `cmd:"" help:"Manage configuration settings."`
 	Migrate  MigrateCmd  `cmd:"" help:"Migrate data to OneCLI Cloud."`
+	Pg       PgCmd       `cmd:"" help:"Database routing commands for agents (governed proxy URLs)."`
 }
 
 func main() {
 	out := output.New()
 
-	// Hidden sidecar mode: the enforce-mode auth forwarder forked by
-	// `onecli run --enforce` re-invokes this binary. Handled before kong
-	// so the flag never appears in help or completion.
+	// Hidden sidecar modes, handled before Kong so the flags never appear
+	// in help or the command tree.
+	//
+	// Enforce-mode auth forwarder: forked by `onecli run --enforce`.
 	if pid, ok := parseEnforceForwarderArgs(os.Args[1:]); ok {
 		runEnforceForwarder(pid)
+		return
+	}
+	// Pg sidecar: forked by `onecli run` before exec to own pg session
+	// heartbeats/cleanup.
+	if len(os.Args) > 1 && os.Args[1] == pgSidecarFlag {
+		if args, ok := parsePgSidecarArgs(os.Args[2:]); ok {
+			runPgSidecar(args)
+		}
 		return
 	}
 
