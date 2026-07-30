@@ -144,6 +144,19 @@ onecli auth status                                     Check current auth state
 
 Authentication is only required when the server enforces it. In local mode, commands work without logging in.
 
+### Run
+
+```
+onecli run -- <command> [args...]                      Run a command with gateway access
+onecli run --agent my-agent -- claude                  One-off run as a specific agent
+```
+
+`onecli run` launches any command behind the OneCLI gateway — proxy and CA
+trust are configured automatically, and credentials are injected at the
+gateway. The agent identity resolves as `--agent` flag > `ONECLI_AGENT` env >
+`onecli config set agent <identifier>`; when none is set, the project's
+default agent is used.
+
 ### Config
 
 ```
@@ -151,12 +164,22 @@ onecli config get <key>                                Read config value
 onecli config set <key> <value>                        Write config value
 ```
 
+Keys:
+
+| Key | Description |
+|-----|-------------|
+| `api-host` | API base URL (default: `https://api.onecli.sh`) |
+| `project` | Project slug used when no `--project` flag is given |
+| `agent` | Agent identifier `onecli run` uses when no `--agent` flag is given (pins this machine to an agent) |
+
 ## Environment Variables
 
 | Variable | Description |
 |----------|-------------|
 | `ONECLI_API_KEY` | API key (overrides stored key) |
 | `ONECLI_API_HOST` | API base URL (default: `https://api.onecli.sh`) |
+| `ONECLI_PROJECT` | Project slug (overrides the `project` config key) |
+| `ONECLI_AGENT` | Agent identifier for `onecli run` (overrides the `agent` config key) |
 | `ONECLI_ENV` | `dev` or `production` |
 
 ## Output

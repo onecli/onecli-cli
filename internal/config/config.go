@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/onecli/onecli-cli/pkg/validate"
 )
 
 const (
@@ -13,6 +15,7 @@ const (
 	apiKeyVar  = "ONECLI_API_KEY"
 	apiHostVar = "ONECLI_API_HOST"
 	projectVar = "ONECLI_PROJECT"
+	agentVar   = "ONECLI_AGENT"
 
 	envProduction = "production"
 	envDev        = "dev"
@@ -78,6 +81,22 @@ func Project() string {
 	return cfg["project"]
 }
 
+// Agent returns the configured agent identifier, or empty string if not set.
+// This is the machine-local agent pin ("this terminal runs as writer-bot"),
+// used by `onecli run` when no --agent flag is given; empty means the
+// project's server-side default agent.
+// Precedence: ONECLI_AGENT env var > config file > empty.
+func Agent() string {
+	if v := os.Getenv(agentVar); v != "" {
+		return v
+	}
+	cfg, err := readConfig()
+	if err != nil {
+		return ""
+	}
+	return cfg["agent"]
+}
+
 // KeychainService returns the keychain service name for API key storage.
 func KeychainService() string {
 	if IsDev() {
@@ -115,12 +134,14 @@ var ErrInvalidConfigValue = errors.New("invalid config value")
 var validKeys = map[string]func(string) error{
 	"api-host": validateURL,
 	"project":  nil,
+	"agent":    validate.ResourceID,
 }
 
 // configDefaults maps each config key to its default value.
 var configDefaults = map[string]string{
 	"api-host": defaultAPIHost,
 	"project":  "",
+	"agent":    "",
 }
 
 func validateURL(u string) error {
@@ -200,6 +221,8 @@ func GetConfigValue(key string) (string, error) {
 		return APIHost(), nil
 	case "project":
 		return Project(), nil
+	case "agent":
+		return Agent(), nil
 	}
 
 	cfg, err := readConfig()

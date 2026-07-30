@@ -13,7 +13,7 @@ type ConfigCmd struct {
 
 // ConfigGetCmd is `onecli config get <key>`.
 type ConfigGetCmd struct {
-	Key string `arg:"" required:"" help:"Config key to read. Keys: api-host."`
+	Key string `arg:"" required:"" help:"Config key to read. Keys: api-host, project, agent."`
 }
 
 // ConfigGetResponse is the JSON output of config get.
@@ -32,7 +32,7 @@ func (c *ConfigGetCmd) Run(out *output.Writer) error {
 
 // ConfigSetCmd is `onecli config set <key> <value>`.
 type ConfigSetCmd struct {
-	Key   string `arg:"" required:"" help:"Config key to set. Keys: api-host."`
+	Key   string `arg:"" required:"" help:"Config key to set. Keys: api-host, project, agent."`
 	Value string `arg:"" required:"" help:"Value to set."`
 }
 
