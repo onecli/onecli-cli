@@ -457,7 +457,7 @@ type agentSpec struct {
 	agentName         string
 	baseDir           string // home-relative config dir (skills/hooks/plugins live here)
 	configDir         string // VS Code-style app dir name; non-empty enables Electron proxy-settings injection.
-	skipHook          bool   // true for agents that don't support Claude Code-style UserPromptSubmit hooks.
+	skipHook          bool   // true when the gateway hook shouldn't be registered — either the agent has no Claude Code-style hooks (Hermes), or it renders injected hook context visibly in the transcript (Codex), where the auto-loaded onecli-gateway skill carries the same guidance without the noise.
 	pluginGateway     bool   // true for agents that load the transform_tool_result recovery plugin (e.g. Hermes).
 	dockerSandbox     bool   // true for agents that run tools in a Docker sandbox needing TERMINAL_DOCKER_* injection.
 	needsAnthropicKey bool   // true for agents that refuse to start without a provider key in the env (e.g. OpenClaw); a placeholder is ensured, the gateway swaps in the real key per request.
@@ -472,7 +472,11 @@ var supportedAgents = []struct {
 }{
 	{[]string{"claude"}, agentSpec{agentName: "Claude Code", baseDir: ".claude"}},
 	{[]string{"cursor", "agent"}, agentSpec{agentName: "Cursor", baseDir: ".cursor", configDir: "Cursor"}},
-	{[]string{"codex"}, agentSpec{agentName: "Codex", baseDir: ".agents", nativeProxyConfig: ".codex", hooksFile: ".codex/hooks.json"}},
+	// Codex skips the hook: it echoes injected hook context into the
+	// transcript (Claude injects it silently), so the hook is pure noise
+	// there. The onecli-gateway skill installed above auto-loads under the
+	// gateway and carries the same guidance.
+	{[]string{"codex"}, agentSpec{agentName: "Codex", baseDir: ".agents", skipHook: true, nativeProxyConfig: ".codex"}},
 	{[]string{"hermes"}, agentSpec{agentName: "Hermes", baseDir: ".hermes", skipHook: true, pluginGateway: true, dockerSandbox: true}},
 	{[]string{"opencode"}, agentSpec{agentName: "OpenCode", baseDir: ".opencode"}},
 	// OpenClaw loads skills from ~/.openclaw/skills; its hook system is its

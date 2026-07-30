@@ -148,7 +148,7 @@ func TestAgentSkillDir(t *testing.T) {
 		{"claude", agentSpec{agentName: "Claude Code", baseDir: ".claude"}, true},
 		{"cursor", agentSpec{agentName: "Cursor", baseDir: ".cursor", configDir: "Cursor"}, true},
 		{"agent", agentSpec{agentName: "Cursor", baseDir: ".cursor", configDir: "Cursor"}, true},
-		{"codex", agentSpec{agentName: "Codex", baseDir: ".agents", nativeProxyConfig: ".codex", hooksFile: ".codex/hooks.json"}, true},
+		{"codex", agentSpec{agentName: "Codex", baseDir: ".agents", skipHook: true, nativeProxyConfig: ".codex"}, true},
 		{"hermes", agentSpec{agentName: "Hermes", baseDir: ".hermes", skipHook: true, pluginGateway: true, dockerSandbox: true}, true},
 		{"opencode", agentSpec{agentName: "OpenCode", baseDir: ".opencode"}, true},
 		{"openclaw", agentSpec{agentName: "OpenClaw", baseDir: ".openclaw", skipHook: true, needsAnthropicKey: true}, true},
@@ -190,6 +190,27 @@ func TestEnsureEnv(t *testing.T) {
 			t.Errorf("ANTHROPIC_API_KEY = %q, want placeholder despite the prefixed sibling", v)
 		}
 	})
+}
+
+func TestCodexSkipsGatewayHook(t *testing.T) {
+	// Codex renders injected hook context visibly in its transcript
+	// (Claude injects it silently), so `onecli run` must NOT register the
+	// gateway hook for Codex — the auto-loaded onecli-gateway skill carries
+	// the same guidance without the per-prompt noise.
+	spec, ok := agentSkillDir("codex")
+	if !ok {
+		t.Fatal("codex spec not found")
+	}
+	if !spec.skipHook {
+		t.Error("codex must set skipHook so the gateway hook is not registered")
+	}
+	if spec.hooksFile != "" {
+		t.Errorf("codex hooksFile = %q, want empty (hook is skipped)", spec.hooksFile)
+	}
+	// Claude, by contrast, keeps the hook (silent injection there).
+	if claude, _ := agentSkillDir("claude"); claude.skipHook {
+		t.Error("claude must keep the gateway hook (skipHook should be false)")
+	}
 }
 
 func TestProxyURLWithHost(t *testing.T) {
@@ -773,7 +794,13 @@ func TestGatewayDetectHook_EmitsJSONEnvelope(t *testing.T) {
 	})
 }
 
-func TestMaybeInstallGatewayHook_CodexHooksFile(t *testing.T) {
+// TestMaybeInstallGatewayHook_DedicatedHooksFile covers the dedicated
+// hooks-file registration path (a home-relative hooksFile, no matcher, plus
+// the one-time trust notice), exercised via a Codex-style ~/.codex/hooks.json.
+// Note: `onecli run` no longer registers this hook for Codex itself (Codex
+// renders injected hook context visibly; see supportedAgents) — this verifies
+// the underlying helper for any agent that opts into a dedicated hooks file.
+func TestMaybeInstallGatewayHook_DedicatedHooksFile(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("test overrides HOME, which UserHomeDir ignores on windows")
 	}
