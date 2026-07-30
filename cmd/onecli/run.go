@@ -20,7 +20,6 @@ import (
 	"github.com/onecli/onecli-cli/internal/api"
 	"github.com/onecli/onecli-cli/internal/config"
 	"github.com/onecli/onecli-cli/pkg/output"
-	"github.com/onecli/onecli-cli/pkg/validate"
 
 	"gopkg.in/yaml.v3"
 )
@@ -43,7 +42,7 @@ var caShimSource string
 // RunCmd is `onecli run -- <command> [args...]`.
 type RunCmd struct {
 	Project string   `optional:"" short:"p" help:"Project slug."`
-	Agent   string   `optional:"" name:"agent" help:"OneCLI agent identifier (uses default agent if omitted)."`
+	Agent   string   `optional:"" name:"agent" help:"OneCLI agent identifier (default: ONECLI_AGENT env, then 'onecli config set agent', then the project's default agent)."`
 	Gateway string   `optional:"" name:"gateway" help:"Gateway host:port override (default: derived from API host)."`
 	NoCA    bool     `optional:"" name:"no-ca" help:"Skip writing the CA cert and CA trust env injection."`
 	Enforce bool     `optional:"" name:"enforce" help:"OS-enforced governance: route the agent's sandboxed egress through the gateway so it cannot be bypassed (Claude Code only)."`
@@ -56,11 +55,12 @@ func (c *RunCmd) Run(out *output.Writer) error {
 		return fmt.Errorf("no command specified: use 'onecli run -- <command> [args...]'")
 	}
 
-	// Validate agent identifier if provided.
-	if c.Agent != "" {
-		if err := validate.ResourceID(c.Agent); err != nil {
-			return fmt.Errorf("invalid agent identifier: %w", err)
-		}
+	// Resolve the agent identity: --agent flag > ONECLI_AGENT env >
+	// `onecli config set agent ...` (the machine-local pin); empty means the
+	// project's server-side default agent. Validated at the boundary.
+	agent, err := resolveAgent(c.Agent)
+	if err != nil {
+		return err
 	}
 
 	// Resolve the binary path early — fail fast before the API round-trip.
@@ -74,7 +74,7 @@ func (c *RunCmd) Run(out *output.Writer) error {
 	if err != nil {
 		return err
 	}
-	cfg, err := client.GetContainerConfig(newContext(), c.Agent)
+	cfg, err := client.GetContainerConfig(newContext(), agent)
 	if err != nil {
 		return err
 	}

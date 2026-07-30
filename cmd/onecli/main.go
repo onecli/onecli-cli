@@ -179,6 +179,24 @@ func resolveProject(flag string) (string, error) {
 	return v, nil
 }
 
+// resolveAgent returns the agent identifier from the flag value, falling back
+// to config (ONECLI_AGENT env var > config file). Empty means the project's
+// server-side default agent. Returns an error if the resolved value fails
+// input validation.
+func resolveAgent(flag string) (string, error) {
+	v := flag
+	if v == "" {
+		v = config.Agent()
+	}
+	if v == "" {
+		return "", nil
+	}
+	if err := validate.ResourceID(v); err != nil {
+		return "", fmt.Errorf("invalid agent identifier: %w", err)
+	}
+	return v, nil
+}
+
 // hintForCommand returns a contextual hint message based on the active command group.
 func hintForCommand(cmd, host string) string {
 	group := strings.SplitN(cmd, " ", 2)[0]

@@ -204,6 +204,81 @@ func TestGetConfigValueProjectRespectsEnv(t *testing.T) {
 	}
 }
 
+func TestAgentDefault(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	t.Setenv("ONECLI_AGENT", "")
+
+	if got := Agent(); got != "" {
+		t.Errorf("Agent() = %q, want empty", got)
+	}
+}
+
+func TestAgentEnvOverride(t *testing.T) {
+	t.Setenv("ONECLI_AGENT", "env-agent")
+	if got := Agent(); got != "env-agent" {
+		t.Errorf("Agent() = %q, want env-agent", got)
+	}
+}
+
+func TestAgentFromConfigFile(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	t.Setenv("ONECLI_ENV", "")
+	t.Setenv("ONECLI_AGENT", "")
+
+	if err := SetConfigValue("agent", "file-agent"); err != nil {
+		t.Fatal(err)
+	}
+	if got := Agent(); got != "file-agent" {
+		t.Errorf("Agent() = %q, want file-agent", got)
+	}
+}
+
+func TestAgentEnvTakesPrecedenceOverFile(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	t.Setenv("ONECLI_ENV", "")
+
+	_ = SetConfigValue("agent", "file-agent")
+	t.Setenv("ONECLI_AGENT", "env-agent")
+
+	if got := Agent(); got != "env-agent" {
+		t.Errorf("Agent() = %q, env var should take precedence", got)
+	}
+}
+
+func TestGetConfigValueAgentRespectsEnv(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	t.Setenv("ONECLI_ENV", "")
+
+	_ = SetConfigValue("agent", "file-agent")
+	t.Setenv("ONECLI_AGENT", "env-agent")
+
+	val, err := GetConfigValue("agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if val != "env-agent" {
+		t.Errorf("GetConfigValue(agent) = %q, env var should take precedence", val)
+	}
+}
+
+func TestSetConfigValueAgentRejectsInvalidIdentifier(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	t.Setenv("ONECLI_ENV", "")
+
+	// The agent value reaches URLs and shell contexts downstream — reject
+	// hardened-input violations at the boundary, like the --agent flag does.
+	for _, bad := range []string{"", "two words", "a?b", "a%20b", "../etc"} {
+		if err := SetConfigValue("agent", bad); !errors.Is(err, ErrInvalidConfigValue) {
+			t.Errorf("SetConfigValue(agent, %q) = %v, want ErrInvalidConfigValue", bad, err)
+		}
+	}
+}
+
 func TestGetConfigValueDefaultWhenNoFile(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("HOME", dir)

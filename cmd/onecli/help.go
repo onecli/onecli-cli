@@ -42,9 +42,10 @@ func (cmd *HelpCmd) Run(out *output.Writer) error {
 			{Name: "run", Description: "Run a command with OneCLI gateway access.", Args: []ArgInfo{
 				{Name: "<command>", Required: true, Description: "Command to execute (e.g. claude, cursor, codex)."},
 				{Name: "--project, -p", Description: "Project slug."},
-				{Name: "--agent", Description: "OneCLI agent identifier (uses default if omitted)."},
+				{Name: "--agent", Description: "OneCLI agent identifier (default: ONECLI_AGENT env, then 'onecli config set agent', then the project's default agent)."},
 				{Name: "--gateway", Description: "Gateway host:port override (default: derived from API host)."},
 				{Name: "--no-ca", Description: "Skip CA cert write and CA trust env injection."},
+				{Name: "--enforce", Description: "OS-enforced governance: route the agent's sandboxed egress through the gateway so it cannot be bypassed (Claude Code only)."},
 				{Name: "--dry-run", Description: "Print resolved env and command without executing."},
 			}},
 			{Name: "agents list", Description: "List all agents.", Args: []ArgInfo{
@@ -449,8 +450,8 @@ func (cmd *HelpCmd) Run(out *output.Writer) error {
 			}},
 			{Name: "auth api-key", Description: "Show your current API key."},
 			{Name: "auth regenerate-api-key", Description: "Regenerate your API key."},
-			{Name: "config get <key>", Description: "Get a config value."},
-			{Name: "config set <key> <value>", Description: "Set a config value."},
+			{Name: "config get <key>", Description: "Get a config value. Keys: api-host, project, agent."},
+			{Name: "config set <key> <value>", Description: "Set a config value. Keys: api-host, project, agent."},
 			{Name: "migrate", Description: "Migrate data to OneCLI Cloud.", Args: []ArgInfo{
 				{Name: "--cloud-key", Required: true, Description: "OneCLI Cloud API key."},
 			}},
