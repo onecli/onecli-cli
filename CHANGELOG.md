@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.11.0](https://github.com/onecli/onecli-cli/compare/v2.10.0...v2.11.0) (2026-07-30)
+
+
+### Features
+
+* **run:** OpenClaw joins the supported agents table ([#108](https://github.com/onecli/onecli-cli/issues/108)) ([02a40ec](https://github.com/onecli/onecli-cli/commit/02a40ec2147d40f85b08b295bf422dfcb66c2754))
+
 ## [2.10.0](https://github.com/onecli/onecli-cli/compare/v2.9.0...v2.10.0) (2026-07-30)
 
 
