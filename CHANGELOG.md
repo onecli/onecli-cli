@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.10.0](https://github.com/onecli/onecli-cli/compare/v2.9.0...v2.10.0) (2026-07-30)
+
+
+### Features
+
+* **run:** persistent agent identity via the agent config key and ONECLI_AGENT ([#106](https://github.com/onecli/onecli-cli/issues/106)) ([fe5c399](https://github.com/onecli/onecli-cli/commit/fe5c399a264694fa184d743cc092e1f3455c033c))
+
 ## [2.9.0](https://github.com/onecli/onecli-cli/compare/v2.8.1...v2.9.0) (2026-07-29)
 
 
