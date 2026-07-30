@@ -151,6 +151,7 @@ func TestAgentSkillDir(t *testing.T) {
 		{"codex", agentSpec{agentName: "Codex", baseDir: ".agents", nativeProxyConfig: ".codex", hooksFile: ".codex/hooks.json"}, true},
 		{"hermes", agentSpec{agentName: "Hermes", baseDir: ".hermes", skipHook: true, pluginGateway: true, dockerSandbox: true}, true},
 		{"opencode", agentSpec{agentName: "OpenCode", baseDir: ".opencode"}, true},
+		{"openclaw", agentSpec{agentName: "OpenClaw", baseDir: ".openclaw", skipHook: true}, true},
 		{"/usr/local/bin/cursor", agentSpec{agentName: "Cursor", baseDir: ".cursor", configDir: "Cursor"}, true},
 		{"unknown", agentSpec{}, false},
 	}

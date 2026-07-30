@@ -465,6 +465,11 @@ var supportedAgents = []struct {
 	{[]string{"codex"}, agentSpec{agentName: "Codex", baseDir: ".agents", nativeProxyConfig: ".codex", hooksFile: ".codex/hooks.json"}},
 	{[]string{"hermes"}, agentSpec{agentName: "Hermes", baseDir: ".hermes", skipHook: true, pluginGateway: true, dockerSandbox: true}},
 	{[]string{"opencode"}, agentSpec{agentName: "OpenCode", baseDir: ".opencode"}},
+	// OpenClaw loads skills from ~/.openclaw/skills; its hook system is its
+	// own (not Claude-style settings.json), so the hook install is skipped.
+	// Its long-lived process is `openclaw gateway run`, and it honors the
+	// injected proxy env via undici's EnvHttpProxyAgent.
+	{[]string{"openclaw"}, agentSpec{agentName: "OpenClaw", baseDir: ".openclaw", skipHook: true}},
 }
 
 // agentSkillDir returns the integration spec for a known agent command, or
