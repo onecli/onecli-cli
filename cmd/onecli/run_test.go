@@ -151,6 +151,7 @@ func TestAgentSkillDir(t *testing.T) {
 		{"codex", agentSpec{agentName: "Codex", baseDir: ".agents", nativeProxyConfig: ".codex", hooksFile: ".codex/hooks.json"}, true},
 		{"hermes", agentSpec{agentName: "Hermes", baseDir: ".hermes", skipHook: true, pluginGateway: true, dockerSandbox: true}, true},
 		{"opencode", agentSpec{agentName: "OpenCode", baseDir: ".opencode"}, true},
+		{"openclaw", agentSpec{agentName: "OpenClaw", baseDir: ".openclaw", skipHook: true, needsAnthropicKey: true}, true},
 		{"/usr/local/bin/cursor", agentSpec{agentName: "Cursor", baseDir: ".cursor", configDir: "Cursor"}, true},
 		{"unknown", agentSpec{}, false},
 	}
@@ -165,6 +166,30 @@ func TestAgentSkillDir(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestEnsureEnv(t *testing.T) {
+	t.Run("appends when absent", func(t *testing.T) {
+		env := ensureEnv([]string{"HOME=/h"}, "ANTHROPIC_API_KEY", anthropicKeyPlaceholder)
+		if v, ok := envValue(env, "ANTHROPIC_API_KEY"); !ok || v != anthropicKeyPlaceholder {
+			t.Errorf("ANTHROPIC_API_KEY = %q, want placeholder", v)
+		}
+	})
+	t.Run("an existing value wins (the user's shell key)", func(t *testing.T) {
+		env := ensureEnv([]string{"ANTHROPIC_API_KEY=sk-ant-real"}, "ANTHROPIC_API_KEY", anthropicKeyPlaceholder)
+		if len(env) != 1 {
+			t.Fatalf("env grew to %d entries; a duplicate would be ambiguous under POSIX first-match", len(env))
+		}
+		if v, _ := envValue(env, "ANTHROPIC_API_KEY"); v != "sk-ant-real" {
+			t.Errorf("ANTHROPIC_API_KEY = %q, want the existing value", v)
+		}
+	})
+	t.Run("does not match on key prefix", func(t *testing.T) {
+		env := ensureEnv([]string{"ANTHROPIC_API_KEY_BACKUP=x"}, "ANTHROPIC_API_KEY", anthropicKeyPlaceholder)
+		if v, ok := envValue(env, "ANTHROPIC_API_KEY"); !ok || v != anthropicKeyPlaceholder {
+			t.Errorf("ANTHROPIC_API_KEY = %q, want placeholder despite the prefixed sibling", v)
+		}
+	})
 }
 
 func TestProxyURLWithHost(t *testing.T) {
