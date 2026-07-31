@@ -55,26 +55,25 @@ func TestRewriteProxyEnvToLoopbackPreservesAocMarker(t *testing.T) {
 	}
 }
 
-func TestEnforceWrapArgv(t *testing.T) {
-	argv := enforceWrapArgv("/p/wrap.sb", "/usr/local/bin/somecli", []string{"--flag", "v"}, "somecli")
-	want := []string{"sandbox-exec", "-f", "/p/wrap.sb", "/usr/local/bin/somecli", "--flag", "v"}
-	if len(argv) != len(want) {
-		t.Fatalf("argv = %v, want %v", argv, want)
+func TestEnforceWrapArgvAppendsQuirks(t *testing.T) {
+	// enforceWrapArgv assembles agent args + per-agent quirk flags and
+	// hands them to the platform sandbox's WrapArgv. The OS-launcher shape
+	// (e.g. sandbox-exec on macOS) is the sandbox package's concern and is
+	// asserted there; here we assert only the platform-neutral contract:
+	// the agent's own args are present and quirk flags are appended last.
+	got := strings.Join(enforceWrapArgv("/p/wrap.sb", "/bin/codex", []string{"exec", "task"}, "codex"), " ")
+	if !strings.Contains(got, "exec task") {
+		t.Errorf("agent args missing from argv: %q", got)
 	}
-	for i := range want {
-		if argv[i] != want[i] {
-			t.Errorf("argv[%d] = %q, want %q", i, argv[i], want[i])
-		}
+	if !strings.HasSuffix(got, "-c sandbox_mode=danger-full-access") {
+		t.Errorf("codex quirk args missing or not last: %q", got)
 	}
 }
 
-func TestEnforceWrapArgvCodexQuirk(t *testing.T) {
-	// Codex's internal Seatbelt can't apply inside ours (sandbox_apply
-	// EPERM); the quirk disables it, appended last so it wins.
-	argv := enforceWrapArgv("/p/wrap.sb", "/bin/codex", []string{"exec", "task"}, "codex")
-	got := strings.Join(argv, " ")
-	if !strings.HasSuffix(got, "-c sandbox_mode=danger-full-access") {
-		t.Errorf("codex quirk args missing or not last: %v", argv)
+func TestEnforceWrapNoticeAndQuirks(t *testing.T) {
+	// An agent without quirks gets neither extra args nor a notice.
+	if len(enforceWrapQuirkArgs("somecli")) != 0 {
+		t.Error("no quirk args expected for an agent without quirks")
 	}
 	if enforceWrapNotice("codex") == "" {
 		t.Error("codex quirk must surface a user-facing notice")
