@@ -9,7 +9,9 @@ package main
 // one network path, a loopback forwarder that injects the gateway
 // credentials (see run_enforce_forwarder.go). Direct dials fail at the OS.
 //
-// Currently Claude Code only. Its sandbox honors --settings for the
+// This file is the NATIVE enforce path, used for agents whose runtime has
+// an OS-level sandbox with a custom-proxy setting (currently Claude Code).
+// Its sandbox honors --settings for the
 // sandbox.* keys, denies writes to every settings.json scope from inside
 // the sandbox, and (with allowUnsandboxedCommands=false) ignores the
 // dangerouslyDisableSandbox escape hatch — the exact three properties

@@ -35,6 +35,7 @@ type CLI struct {
 	Counts   CountsCmd   `cmd:"" help:"Show the project's resource counts."`
 	Auth     AuthCmd     `cmd:"" help:"Manage authentication."`
 	Config   ConfigCmd   `cmd:"" help:"Manage configuration settings."`
+	Sandbox  SandboxCmd  `cmd:"" help:"Inspect and audit the enforce-mode sandbox."`
 	Migrate  MigrateCmd  `cmd:"" help:"Migrate data to OneCLI Cloud."`
 }
 
