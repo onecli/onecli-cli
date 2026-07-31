@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.12.0](https://github.com/onecli/onecli-cli/compare/v2.11.0...v2.12.0) (2026-07-31)
+
+
+### Features
+
+* **run:** universal --enforce — OneCLI-owned OS sandbox wraps any agent ([#105](https://github.com/onecli/onecli-cli/issues/105)) ([a27b6de](https://github.com/onecli/onecli-cli/commit/a27b6de60bf5e479c71b2fc0db823ed16a38648c))
+
+
+### Bug Fixes
+
+* **run:** stop registering the noisy gateway hook for Codex ([#110](https://github.com/onecli/onecli-cli/issues/110)) ([86415d3](https://github.com/onecli/onecli-cli/commit/86415d347ef949297f3fa633cc15d55ad4cca03e))
+
 ## [2.11.0](https://github.com/onecli/onecli-cli/compare/v2.10.0...v2.11.0) (2026-07-30)
 
 
