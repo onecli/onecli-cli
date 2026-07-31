@@ -2,9 +2,11 @@ package main
 
 import (
 	"bytes"
+	"crypto/x509"
 	_ "embed"
 	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"net/url"
 	"os"
@@ -13,6 +15,7 @@ import (
 	"regexp"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -146,7 +149,10 @@ func (c *RunCmd) Run(out *output.Writer) error {
 	// be repointed at the forwarder first. Both paths fail closed.
 	enforceNative := false
 	wrapProfilePath := ""
+	guiBinary := "" // non-empty when enforcing a GUI editor: exec this app-bundle binary instead of the CLI launcher
 	var wrapPort uint16
+	// Owns the pf anchor when transparent redirect is active; nil otherwise.
+	var transparentSess *transparentSession
 	if c.Enforce {
 		spec, known := agentSkillDir(c.Args[0])
 		switch {
@@ -157,11 +163,43 @@ func (c *RunCmd) Run(out *output.Writer) error {
 			// (and the wrap denies docker.sock as an egress bypass), so
 			// the wrap cannot govern this agent. Fail closed.
 			return fmt.Errorf("--enforce is not supported for %s: its tools run in a Docker sandbox the OS sandbox cannot govern", spec.agentName)
-		default:
-			wrapProfilePath, wrapPort, err = resolveEnforceWrap(cfg.Env)
+		case known && spec.configDir != "":
+			// GUI editors (Cursor and other VS Code-style apps): the `cursor`
+			// CLI is only a launcher — it hands off to an already-running
+			// Electron app, so sandboxing IT would govern nothing. Instead we
+			// exec the app bundle's own binary under the sandbox, which puts
+			// the whole editor (AI calls, telemetry, extensions, its terminal)
+			// inside the profile. Verified: Cursor starts normally and its own
+			// update check to api2.cursor.sh is refused by the OS
+			// (net::ERR_ACCESS_DENIED), i.e. enforcement the app cannot ignore.
+			guiBinary, err = resolveGUIAppBinary(spec)
+			if err != nil {
+				return fmt.Errorf("--enforce for %s: %w", spec.agentName, err)
+			}
+			if running, pid := guiAlreadyRunning(spec); running {
+				// macOS activates the EXISTING instance instead of starting
+				// ours, so launching now would report enforcement while the
+				// user keeps typing in whatever window is already open —
+				// which may well be an ungoverned one. We can't tell from
+				// here whether that instance is sandboxed, so refuse and let
+				// the user restart it deliberately.
+				return fmt.Errorf("--enforce for %s: it is already running (pid %d). Quit it first, then re-run: macOS would otherwise just focus the existing window instead of launching a sandboxed one", spec.agentName, pid)
+			}
+			wrapProfilePath, wrapPort, transparentSess, err = resolveEnforceWrapMode(cfg.Env)
 			if err != nil {
 				return fmt.Errorf("enforce mode unavailable: %w", err)
 			}
+		default:
+			wrapProfilePath, wrapPort, transparentSess, err = resolveEnforceWrapMode(cfg.Env)
+			if err != nil {
+				return fmt.Errorf("enforce mode unavailable: %w", err)
+			}
+		}
+		// The pf anchor must not outlive the run: a stale one keeps
+		// redirecting a group whose listener is gone. The session also
+		// installs signal handlers for the paths this defer cannot cover.
+		if transparentSess != nil {
+			defer func() { _ = transparentSess.Close() }()
 		}
 	}
 
@@ -206,8 +244,27 @@ func (c *RunCmd) Run(out *output.Writer) error {
 		// Electron-based agents (e.g. Cursor) ignore embedded user:pass in
 		// HTTPS_PROXY and show a native auth dialog. Inject proxy credentials
 		// into the app's VS Code-style settings.json instead.
+		//
+		// NOT under --enforce: there we launch the app ourselves and pass
+		// Chromium a native --proxy-server pointing at the loopback
+		// forwarder, which injects the gateway credentials. The app-level
+		// keys are then both redundant and actively harmful — Electron's
+		// SimpleURLLoader rejects http.proxyAuthorization with
+		// net::ERR_INVALID_ARGUMENT, failing every request the editor makes
+		// (verified: removing the keys took the failures from 4 per launch
+		// to 0, and the update check completed through the gateway).
 		if a.configDir != "" {
-			env = injectElectronProxySettings(out, env, a.configDir, caPath)
+			if guiBinary != "" {
+				clearElectronProxySettings(out, a.configDir)
+				// Chromium reads the OS keychain, not our CA env vars, so a
+				// GUI editor is the one surface where an untrusted or rotated
+				// CA silently breaks every request. Check before launching:
+				// the symptom (ERR_CERT_AUTHORITY_INVALID with a correctly
+				// named CA installed) is very hard to diagnose after the fact.
+				warnIfGatewayCANotTrusted(out, cfg.CACertificate)
+			} else {
+				env = injectElectronProxySettings(out, env, a.configDir, caPath)
+			}
 		}
 
 		// Agents with a native proxy config (e.g. Codex) need proxy_url
@@ -270,11 +327,31 @@ func (c *RunCmd) Run(out *output.Writer) error {
 		if err != nil {
 			return fmt.Errorf("enforce mode unavailable: %w", err)
 		}
-		args = enforceWrapArgv(wrapProfilePath, binary, c.Args[1:], agentFramework)
+		// For a GUI editor, confine the app bundle's own binary rather than
+		// the CLI launcher (which would exit immediately, leaving the real
+		// editor running outside the sandbox). Its own args are dropped:
+		// the launcher's argv (e.g. a path to open) doesn't apply to the
+		// Electron entrypoint.
+		sandboxed, sandboxedArgs := binary, c.Args[1:]
+		if guiBinary != "" {
+			sandboxed, sandboxedArgs = guiBinary, nil
+		}
+		args = enforceWrapArgv(wrapProfilePath, sandboxed, sandboxedArgs, agentFramework, wrapPort)
+		// Transparent redirect scopes pf by GID, so the confined tree must
+		// adopt the sandbox group. The helper wraps the LAUNCHER, not the
+		// other way round: Seatbelt refuses to exec a setgid binary from
+		// inside the sandbox (verified: execvp Operation not permitted).
+		if transparentSess != nil {
+			args = transparentWrapArgv(args)
+			execBinary = setgidHelperPath
+		}
 		if notice := enforceWrapNotice(agentFramework); notice != "" {
 			out.Stderr(notice)
 		}
 		out.Stderr(fmt.Sprintf("onecli: enforce mode active — all process egress locked to the gateway (forwarder :%d).", wrapPort))
+		if guiBinary != "" {
+			out.Stderr(fmt.Sprintf("onecli: launching %s inside the sandbox; close it from the app, not this terminal.", filepath.Base(guiBinary)))
+		}
 	}
 
 	// Exec — replaces this process so the agent gets direct terminal control.
@@ -309,6 +386,25 @@ func writeGatewayCACert(gatewayPEM string) (string, error) {
 	buf.WriteString(gatewayPEM)
 
 	combined := buf.Bytes()
+
+	// Also keep the bare gateway CA on disk, always in step with the bundle.
+	// Tools that need a CA they can *install* rather than point an env var at
+	// (Chromium/Electron reads the OS keychain and ignores SSL_CERT_FILE, so
+	// governing Cursor's GUI requires `security add-trusted-cert`) need the
+	// single certificate, not the ~200-root bundle. Writing it here rather
+	// than on first use is deliberate: a copy that is refreshed on some other
+	// schedule than the bundle goes stale silently, and a stale CA fails as
+	// ERR_CERT_AUTHORITY_INVALID with a *correct-looking* subject name, which
+	// is a genuinely hard error to read. Observed in practice: a months-old
+	// gateway-ca.pem was trusted in the keychain while the gateway had since
+	// rotated, so every Chromium request failed even though `security
+	// find-certificate` showed "OneCLI Local Gateway CA" present and trusted.
+	// Best-effort: the bundle is what enforce actually depends on, and the
+	// bare copy only matters for the manual keychain-install step. A failure
+	// here is surfaced later by warnIfGatewayCANotTrusted, which compares
+	// against the live CA rather than this file.
+	_ = writeBareGatewayCA(filepath.Dir(caPath), gatewayPEM)
+
 	existing, err := os.ReadFile(caPath)
 	if err == nil && bytes.Equal(existing, combined) {
 		return caPath, nil
@@ -317,6 +413,20 @@ func writeGatewayCACert(gatewayPEM string) (string, error) {
 		return "", fmt.Errorf("writing CA bundle: %w", err)
 	}
 	return caPath, nil
+}
+
+// writeBareGatewayCA writes just the gateway CA to <dir>/gateway-ca.pem.
+// Separate from the bundle so it can be installed into an OS trust store.
+func writeBareGatewayCA(dir, gatewayPEM string) error {
+	if strings.TrimSpace(gatewayPEM) == "" {
+		return nil
+	}
+	path := filepath.Join(dir, "gateway-ca.pem")
+	pem := []byte(gatewayPEM)
+	if existing, err := os.ReadFile(path); err == nil && bytes.Equal(existing, pem) {
+		return nil
+	}
+	return os.WriteFile(path, pem, 0o600)
 }
 
 var systemCAPaths = []string{
@@ -545,6 +655,7 @@ type agentSpec struct {
 	agentName         string
 	baseDir           string // home-relative config dir (skills/hooks/plugins live here)
 	configDir         string // VS Code-style app dir name; non-empty enables Electron proxy-settings injection.
+	appBundle         string // macOS .app bundle name for GUI editors; under --enforce we exec its binary inside the sandbox instead of the CLI launcher (which only focuses a running app).
 	skipHook          bool   // true when the gateway hook shouldn't be registered — either the agent has no Claude Code-style hooks (Hermes), or it renders injected hook context visibly in the transcript (Codex), where the auto-loaded onecli-gateway skill carries the same guidance without the noise.
 	pluginGateway     bool   // true for agents that load the transform_tool_result recovery plugin (e.g. Hermes).
 	dockerSandbox     bool   // true for agents that run tools in a Docker sandbox needing TERMINAL_DOCKER_* injection.
@@ -559,7 +670,17 @@ var supportedAgents = []struct {
 	spec  agentSpec
 }{
 	{[]string{"claude"}, agentSpec{agentName: "Claude Code", baseDir: ".claude"}},
-	{[]string{"cursor", "agent"}, agentSpec{agentName: "Cursor", baseDir: ".cursor", configDir: "Cursor"}},
+	// Cursor has two surfaces with OPPOSITE enforce behavior:
+	//   - the GUI launcher (`cursor`, or `agent` when invoked that way)
+	//     only opens/focuses the Electron IDE — no launched process tree to
+	//     sandbox — so configDir routes it to cooperative proxy-settings
+	//     injection and fails --enforce closed (see the enforce switch).
+	//   - the headless agent (`cursor-agent`) IS a launched CLI process,
+	//     exactly like Codex/Claude, so it OMITS configDir and gets the
+	//     real OS-enforced wrap under --enforce. Keeping them as separate
+	//     specs is what lets the same "Cursor" cover both correctly.
+	{[]string{"cursor", "agent"}, agentSpec{agentName: "Cursor", baseDir: ".cursor", configDir: "Cursor", appBundle: "Cursor"}},
+	{[]string{"cursor-agent"}, agentSpec{agentName: "Cursor Agent", baseDir: ".cursor"}},
 	// Codex skips the hook: it echoes injected hook context into the
 	// transcript (Claude injects it silently), so the hook is pure noise
 	// there. The onecli-gateway skill installed above auto-loads under the
@@ -1260,6 +1381,218 @@ func registerUserPromptHook(registrationPath, hookCommand string, includeMatcher
 		return false, err
 	}
 	return true, nil
+}
+
+// resolveGUIAppBinary returns the executable inside a GUI editor's macOS
+// .app bundle. Under --enforce we must exec THIS, not the `cursor` CLI
+// launcher: the launcher just asks macOS to open/focus the app, so
+// sandboxing it would confine a process that exits immediately while the
+// real editor runs ungoverned.
+func resolveGUIAppBinary(spec agentSpec) (string, error) {
+	if runtime.GOOS != "darwin" {
+		return "", fmt.Errorf("sandboxed GUI launch is implemented for macOS only (got %s)", runtime.GOOS)
+	}
+	if spec.appBundle == "" {
+		return "", fmt.Errorf("no .app bundle known for %s", spec.agentName)
+	}
+	// Search the standard locations; a user-local install is common.
+	home, _ := os.UserHomeDir()
+	candidates := []string{
+		filepath.Join("/Applications", spec.appBundle+".app", "Contents", "MacOS", spec.appBundle),
+	}
+	if home != "" {
+		candidates = append(candidates,
+			filepath.Join(home, "Applications", spec.appBundle+".app", "Contents", "MacOS", spec.appBundle))
+	}
+	for _, p := range candidates {
+		if fi, err := os.Stat(p); err == nil && !fi.IsDir() {
+			return p, nil
+		}
+	}
+	return "", fmt.Errorf("could not find %s.app (looked in /Applications and ~/Applications)", spec.appBundle)
+}
+
+// guiAlreadyRunning reports whether the GUI editor is already running, and
+// its pid. This matters for correctness, not convenience: macOS activates
+// the existing instance rather than starting a second one, so launching
+// "under the sandbox" while an unsandboxed copy is open would report
+// enforcement while the user keeps using an ungoverned editor.
+func guiAlreadyRunning(spec agentSpec) (bool, int) {
+	if runtime.GOOS != "darwin" || spec.appBundle == "" {
+		return false, 0
+	}
+	out, err := exec.Command("/usr/bin/pgrep", "-x", spec.appBundle).Output()
+	if err != nil {
+		return false, 0 // non-zero exit = not running
+	}
+	fields := strings.Fields(string(out))
+	if len(fields) == 0 {
+		return false, 0
+	}
+	pid, err := strconv.Atoi(fields[0])
+	if err != nil {
+		return false, 0
+	}
+	return true, pid
+}
+
+// clearElectronProxySettings removes the app-level proxy keys a previous
+// (non-enforce) run injected. Under --enforce the editor is launched with
+// a native --proxy-server flag instead, and leaving the settings in place
+// breaks it two ways: a stale port from an earlier run wins over the flag
+// and the sandbox denies it, and http.proxyAuthorization makes Electron's
+// SimpleURLLoader reject requests outright with ERR_INVALID_ARGUMENT.
+// Only OneCLI's own keys are touched; the rest of settings.json is
+// preserved.
+func clearElectronProxySettings(out *output.Writer, configDir string) {
+	path := vscodeSettingsPath(configDir)
+	if path == "" {
+		return
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return // no settings file: nothing injected, nothing to clear
+	}
+	settings := make(map[string]any)
+	if err := json.Unmarshal(data, &settings); err != nil {
+		out.Stderr("onecli: warning: could not parse editor settings to clear stale proxy keys; if the editor cannot reach the network, remove http.proxy and http.proxyAuthorization manually")
+		return
+	}
+	changed := false
+	for _, k := range []string{"http.proxy", "http.proxyAuthorization"} {
+		if _, present := settings[k]; present {
+			delete(settings, k)
+			changed = true
+		}
+	}
+	if !changed {
+		return
+	}
+	encoded, err := json.MarshalIndent(settings, "", "    ")
+	if err != nil {
+		return
+	}
+	if err := os.WriteFile(path, append(encoded, '\n'), 0o600); err != nil {
+		out.Stderr(fmt.Sprintf("onecli: warning: could not clear stale proxy settings: %v", err))
+		return
+	}
+	out.Stderr("onecli: cleared app-level proxy settings — under enforce the editor is pointed at the gateway by launch flag instead.")
+}
+
+// warnIfGatewayCANotTrusted checks that the gateway CA the *current* session
+// will actually present is the one installed in the login keychain, and says
+// exactly how to fix it when it isn't.
+//
+// This exists because the failure it catches is close to undebuggable from the
+// symptom. Chromium/Electron reads the OS keychain and ignores SSL_CERT_FILE
+// and NODE_EXTRA_CA_CERTS, so a GUI editor needs the CA installed there. If a
+// previously-installed CA has since rotated, the keychain still contains a
+// certificate named "OneCLI Local Gateway CA" — `security find-certificate`
+// and `dump-trust-settings` both look correct — but its key no longer matches,
+// so every request dies as net::ERR_CERT_AUTHORITY_INVALID and the editor's AI
+// silently does nothing. Name equality is the trap, so this compares the
+// public key, which is what actually has to match.
+//
+// Warn rather than fail: a stale CA breaks GUI editors, but the sandbox and
+// the gateway are still fully enforcing, and CLI agents (which trust the
+// bundle by env var) work fine. Refusing to launch would be a worse trade.
+func warnIfGatewayCANotTrusted(out *output.Writer, gatewayPEM string) {
+	if runtime.GOOS != "darwin" || strings.TrimSpace(gatewayPEM) == "" {
+		return
+	}
+	live, err := publicKeyOfPEM([]byte(gatewayPEM))
+	if err != nil {
+		return
+	}
+	// Ask the keychain for every cert with this name: a rotation can leave
+	// several, and the session works if ANY of them is the live one.
+	cmd := exec.Command("/usr/bin/security", "find-certificate",
+		"-c", gatewayCACommonName, "-a", "-p")
+	installed, err := cmd.Output()
+	if err != nil || len(installed) == 0 {
+		out.Stderr("onecli: note: the gateway CA is not installed in your login keychain. " +
+			"GUI editors (Cursor, VS Code) will fail with ERR_CERT_AUTHORITY_INVALID. Install it with:\n" +
+			"  " + gatewayCATrustCommand)
+		return
+	}
+	for _, block := range splitPEMCerts(installed) {
+		if key, err := publicKeyOfPEM(block); err == nil && bytes.Equal(key, live) {
+			// Right CA is present. Presence is NOT trust, though: a cert can
+			// sit in the keychain with no trust settings at all, which is
+			// exactly what `add-trusted-cert -d` does for a non-root user —
+			// it writes to the ADMIN domain, silently applies nothing, and
+			// leaves a certificate that every name-based check reports as
+			// installed while Chromium still fails the handshake. Confirmed
+			// on a real machine: `dump-trust-settings` listed only an
+			// unrelated cert while Cursor logged ERR_CERT_AUTHORITY_INVALID
+			// on every request. So ask the OS to actually evaluate it.
+			if gatewayCAIsTrustedByOS() {
+				return
+			}
+			out.Stderr("onecli: warning: the gateway CA is in your keychain but has no trust settings, " +
+				"so GUI editors will still fail with ERR_CERT_AUTHORITY_INVALID.\n" +
+				"  This is usually the result of using `-d` (admin domain) without root. Fix with:\n" +
+				"    " + gatewayCATrustCommand)
+			return
+		}
+	}
+	out.Stderr("onecli: warning: a certificate named " + gatewayCACommonName + " is in your keychain, " +
+		"but it is NOT the CA this gateway is using (the gateway CA has rotated since you trusted it).\n" +
+		"  GUI editors will fail with ERR_CERT_AUTHORITY_INVALID until you re-trust it:\n" +
+		"    security delete-certificate -c \"" + gatewayCACommonName + "\"\n" +
+		"    " + gatewayCATrustCommand)
+}
+
+const gatewayCACommonName = "OneCLI Local Gateway CA"
+
+// gatewayCATrustCommand is the exact command that works. Note the absence of
+// `-d`: that selects the ADMIN trust domain, which needs root. Run as a normal
+// user it adds the certificate and applies NO trust settings, producing a
+// keychain entry that looks installed and still fails every TLS handshake.
+const gatewayCATrustCommand = "security add-trusted-cert -r trustRoot " +
+	"-k ~/Library/Keychains/login.keychain-db ~/.onecli/gateway-ca.pem"
+
+// gatewayCAIsTrustedByOS asks macOS whether the gateway CA carries user-domain
+// trust settings, rather than inferring trust from the certificate's presence.
+// Presence and trust are genuinely different states here, and only the second
+// one makes Chromium work.
+func gatewayCAIsTrustedByOS() bool {
+	out, err := exec.Command("/usr/bin/security", "dump-trust-settings").Output()
+	if err != nil {
+		// Exits non-zero when the domain holds no trust settings at all,
+		// which is itself the untrusted answer.
+		return false
+	}
+	return strings.Contains(string(out), gatewayCACommonName)
+}
+
+// publicKeyOfPEM returns a stable encoding of the certificate's public key.
+// Comparing the key (not the fingerprint) is deliberate: a CA that is re-issued
+// with the same key is still the same trust anchor and should not warn.
+func publicKeyOfPEM(pemBytes []byte) ([]byte, error) {
+	block, _ := pem.Decode(pemBytes)
+	if block == nil {
+		return nil, fmt.Errorf("no PEM block")
+	}
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return nil, err
+	}
+	return x509.MarshalPKIXPublicKey(cert.PublicKey)
+}
+
+// splitPEMCerts splits a concatenated PEM stream into individual blocks.
+func splitPEMCerts(data []byte) [][]byte {
+	var out [][]byte
+	rest := data
+	for {
+		block, remainder := pem.Decode(rest)
+		if block == nil {
+			return out
+		}
+		out = append(out, pem.EncodeToMemory(block))
+		rest = remainder
+	}
 }
 
 // injectElectronProxySettings writes http.proxy and http.proxyAuthorization

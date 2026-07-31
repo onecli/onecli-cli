@@ -455,6 +455,10 @@ func (cmd *HelpCmd) Run(out *output.Writer) error {
 			{Name: "sandbox audit", Description: "Red-team the enforce-mode sandbox: attempt every known egress bypass and report which the OS actually stops. Exits non-zero if any hole is found.", Args: []ArgInfo{
 				{Name: "<agent>", Description: "Agent to audit (codex, cursor, claude, ...). Defaults to the OneCLI-owned sandbox."},
 			}},
+			{Name: "sandbox transparent status", Description: "Report whether transparent redirect is ready: the sandbox group, scoped pfctl sudo, pf enabled, and an anchor the main ruleset actually reaches. macOS only."},
+			{Name: "sandbox transparent setup", Description: "Print (does not run) the one-time privileged setup for transparent redirect, which governs apps that ignore proxy configuration. macOS only.", Args: []ArgInfo{
+				{Name: "--helper", Description: "Path to the setgid helper source. Defaults to the copy in this checkout."},
+			}},
 			{Name: "migrate", Description: "Migrate data to OneCLI Cloud.", Args: []ArgInfo{
 				{Name: "--cloud-key", Required: true, Description: "OneCLI Cloud API key."},
 			}},

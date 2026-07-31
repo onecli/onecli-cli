@@ -38,3 +38,11 @@ func WrapArgv(profile, binary string, args []string) []string {
 // derive a deliberately-holed variant to prove the audit itself detects
 // holes; normal runs use Materialize.
 func Profile(forwarderPort uint16) string { return profile(forwarderPort) }
+
+// MaterializeOpts writes the profile for an explicit network posture.
+// Prefer Materialize unless you are enabling transparent redirect, which
+// requires a verified pf anchor to stay fail-closed.
+func MaterializeOpts(opts Options) (string, error) { return materializeOpts(opts) }
+
+// ProfileOpts returns the profile text for an explicit posture.
+func ProfileOpts(opts Options) string { return profileOpts(opts) }

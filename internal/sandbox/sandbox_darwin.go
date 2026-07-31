@@ -82,10 +82,7 @@ const seatbeltProfileTemplate = `(version 1)
 ; the OneCLI gateway. Filesystem rules are limited to the surfaces that
 ; would hand an unsandboxed process the network on the agent's behalf.
 (allow default)
-(deny network-outbound)
-(allow network-outbound (remote unix-socket))
-(deny network-outbound (regex #"docker\.sock$"))
-(allow network-outbound (remote tcp "localhost:{{PORT}}"))
+{{NETWORK}}
 (deny lsopen)
 (deny appleevent-send)
 
@@ -157,13 +154,67 @@ const seatbeltProfileTemplate = `(version 1)
 (deny file-read* (subpath "{{HOME}}/.aws"))
 `
 
+// transparentNetworkStanza replaces the loopback-only network rules when
+// transparent redirect is active.
+//
+// Why this exists, and why it is NOT a weakening: Seatbelt adjudicates at
+// connect(), in the socket layer, BEFORE any packet is emitted. Measured
+// against unroutable addresses, a Seatbelt-denied connect returns EPERM in
+// 16ms while an allowed one takes the full 6s network timeout. pf works on
+// packets, so it can only redirect a connection Seatbelt permitted. To
+// transparently proxy an app that dials directly — the Cursor extension
+// host being the case that forced this — the profile must let the packet
+// out so pf can divert it to the loopback listener.
+//
+// The governance that Seatbelt used to provide for port 443 moves to the pf
+// anchor, which default-denies the sandbox group and re-permits only
+// loopback, redirected 443, and DNS. Enforcement is therefore preserved,
+// not traded away, but it now depends on the anchor being loaded — which is
+// why enabling this mode REQUIRES a verified anchor (see
+// requireTransparentAnchor in the caller) and refuses to run without one.
+//
+// Ports other than 443 stay denied at the Seatbelt layer, so this widens
+// exactly the one port pf is configured to capture.
+const transparentNetworkStanza = `(deny network-outbound)
+(allow network-outbound (remote unix-socket))
+(deny network-outbound (regex #"docker\.sock$"))
+(allow network-outbound (remote tcp "localhost:{{PORT}}"))
+; Transparent redirect: pf diverts this to the loopback listener. Seatbelt
+; must permit the connect() for a packet to exist for pf to act on.
+(allow network-outbound (remote tcp "*:443"))`
+
+// loopbackNetworkStanza is the default: no direct egress at any port.
+const loopbackNetworkStanza = `(deny network-outbound)
+(allow network-outbound (remote unix-socket))
+(deny network-outbound (regex #"docker\.sock$"))
+(allow network-outbound (remote tcp "localhost:{{PORT}}"))`
+
+// Options selects the network posture of the rendered profile.
+type Options struct {
+	// ForwarderPort is the loopback listener the sandbox may reach.
+	ForwarderPort uint16
+	// Transparent permits outbound 443 so a pf anchor can redirect it.
+	// Only set this when a verified anchor is loaded: without one, the
+	// permitted port becomes ungoverned direct egress.
+	Transparent bool
+}
+
 // profileFor renders the profile for a home directory. Exported through
 // Profile()/Materialize() so the audit and the enforced run share one
 // definition — two copies of a security policy is how the docker.sock
 // rule stayed broken while a text assertion passed.
 func profileFor(home string, forwarderPort uint16) string {
-	out := strings.ReplaceAll(seatbeltProfileTemplate, "{{HOME}}", home)
-	return strings.ReplaceAll(out, "{{PORT}}", strconv.Itoa(int(forwarderPort)))
+	return profileForOpts(home, Options{ForwarderPort: forwarderPort})
+}
+
+func profileForOpts(home string, opts Options) string {
+	network := loopbackNetworkStanza
+	if opts.Transparent {
+		network = transparentNetworkStanza
+	}
+	out := strings.Replace(seatbeltProfileTemplate, "{{NETWORK}}", network, 1)
+	out = strings.ReplaceAll(out, "{{HOME}}", home)
+	return strings.ReplaceAll(out, "{{PORT}}", strconv.Itoa(int(opts.ForwarderPort)))
 }
 
 // sandboxExecPath is where macOS ships sandbox-exec. A fixed path, not
@@ -192,9 +243,21 @@ func profile(forwarderPort uint16) string {
 	return profileFor(home, forwarderPort)
 }
 
+func profileOpts(opts Options) string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return profileForOpts(home, opts)
+}
+
 // materialize writes the Seatbelt profile under ~/.onecli and returns its
 // path, rewriting only when stale.
 func materialize(forwarderPort uint16) (string, error) {
+	return materializeOpts(Options{ForwarderPort: forwarderPort})
+}
+
+func materializeOpts(opts Options) (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("resolving home dir: %w", err)
@@ -203,8 +266,15 @@ func materialize(forwarderPort uint16) (string, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", fmt.Errorf("creating profile dir: %w", err)
 	}
-	rendered := profileFor(home, forwarderPort)
-	path := filepath.Join(dir, "enforce-wrap.sb")
+	rendered := profileForOpts(home, opts)
+	// Distinct filenames per mode: a transparent profile permits outbound
+	// 443 and is only safe with a loaded anchor, so it must never be
+	// picked up by a normal run through a stale shared path.
+	name := "enforce-wrap.sb"
+	if opts.Transparent {
+		name = "enforce-wrap-transparent.sb"
+	}
+	path := filepath.Join(dir, name)
 	if existing, err := os.ReadFile(path); err == nil && string(existing) == rendered {
 		return path, nil
 	}

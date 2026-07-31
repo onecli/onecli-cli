@@ -17,6 +17,7 @@ package main
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -30,9 +31,17 @@ func TestLiveEnforceWrapBypasses(t *testing.T) {
 	// Port 1: nothing listens there, so every probe destination is outside
 	// the allow. The forwarder-reachable probe is skipped by sandboxProbes()
 	// when no real port is supplied.
-	profile, err := sandbox.Materialize(1)
-	if err != nil {
-		t.Fatalf("materializing profile: %v", err)
+	//
+	// Rendered to a TEMP path, never via sandbox.Materialize: that writes the
+	// shared ~/.onecli/enforce-wrap.sb, which is the exact file a live
+	// enforced session is running under. Running `go test` would then rewrite
+	// a real user's sandbox policy to allow only port 1 — silently breaking
+	// their session's egress and, worse, invalidating any measurement taken
+	// against it afterwards. That happened during development and cost hours
+	// of misdiagnosis, so the test now owns its own file.
+	profile := filepath.Join(t.TempDir(), "enforce-wrap.sb")
+	if err := os.WriteFile(profile, []byte(sandbox.Profile(1)), 0o600); err != nil {
+		t.Fatalf("writing probe profile: %v", err)
 	}
 
 	for _, p := range sandboxProbes() {

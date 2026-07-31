@@ -17,6 +17,7 @@ package main
 // docker.sock rule stayed broken while a text assertion kept passing.
 
 import (
+	"fmt"
 	"net"
 	"net/url"
 	"strconv"
@@ -50,8 +51,11 @@ func rewriteProxyEnvToLoopback(env map[string]string, port uint16) {
 // enforceWrapQuirkArgs returns extra argv appended for agents whose own
 // runtime needs adjusting to live inside the wrap. Appended last so it
 // wins over defaults (and is visible in ps for auditability).
-func enforceWrapQuirkArgs(framework string) []string {
-	if framework == "codex" {
+// forwarderPort is the loopback port all sandboxed egress must exit
+// through; Chromium-based agents need it as a native flag (see below).
+func enforceWrapQuirkArgs(framework string, forwarderPort uint16) []string {
+	switch framework {
+	case "codex":
 		// Codex's internal Seatbelt (sandbox_apply) gets EPERM inside an
 		// outer Seatbelt profile, which breaks every shell command it
 		// runs. Disable its inner sandbox: network governance moves to
@@ -59,6 +63,29 @@ func enforceWrapQuirkArgs(framework string) []string {
 		// filesystem confinement falls back to Codex's approval flow
 		// plus the deferred-egress denies in the profile.
 		return []string{"-c", "sandbox_mode=danger-full-access"}
+	case "cursor", "agent":
+		args := []string{
+			// Electron/Chromium spawns renderer, GPU and network child
+			// processes that each try to create their OWN sandbox. Inside
+			// our outer Seatbelt profile that call is denied ("sandbox
+			// initialization failed: Operation not permitted"), the GPU
+			// process dies repeatedly and Chromium aborts the app ("GPU
+			// process isn't usable. Goodbye."). Disabling Chromium's inner
+			// sandbox lets the editor run; egress stays confined by the
+			// outer profile, which is the guarantee we actually make.
+			// Same shape as the Codex quirk: one sandbox, ours, not two.
+			"--no-sandbox",
+		}
+		if forwarderPort != 0 {
+			// The editor's own network stack (Electron's SimpleURLLoader)
+			// does NOT reliably honor VS Code's `http.proxy` setting — it
+			// failed with net::ERR_INVALID_ARGUMENT while the identical
+			// request succeeded through the same forwarder via curl. Since
+			// we launch the binary ourselves, configure Chromium natively
+			// instead of hoping the app-level setting is respected.
+			args = append(args, fmt.Sprintf("--proxy-server=http://127.0.0.1:%d", forwarderPort))
+		}
+		return args
 	}
 	return nil
 }
@@ -66,16 +93,19 @@ func enforceWrapQuirkArgs(framework string) []string {
 // enforceWrapNotice returns the agent-specific stderr notice for quirks
 // that change the agent's own behavior, or "".
 func enforceWrapNotice(framework string) string {
-	if framework == "codex" {
+	switch framework {
+	case "codex":
 		return "onecli: Codex's internal sandbox is disabled under enforce — the OneCLI sandbox governs all egress instead; filesystem safety falls back to Codex approvals."
+	case "cursor", "agent":
+		return "onecli: Chromium's internal sandbox is disabled under enforce (it cannot nest inside ours) — the OneCLI sandbox governs all editor egress instead."
 	}
 	return ""
 }
 
 // enforceWrapArgv builds the argv that runs the agent confined: the
 // launcher's argv with per-agent quirk flags appended last.
-func enforceWrapArgv(profilePath, binary string, agentArgs []string, framework string) []string {
-	args := append(append([]string{}, agentArgs...), enforceWrapQuirkArgs(framework)...)
+func enforceWrapArgv(profilePath, binary string, agentArgs []string, framework string, forwarderPort uint16) []string {
+	args := append(append([]string{}, agentArgs...), enforceWrapQuirkArgs(framework, forwarderPort)...)
 	return sandbox.WrapArgv(profilePath, binary, args)
 }
 

@@ -512,7 +512,8 @@ func firstLine(b []byte) string {
 
 // SandboxCmd groups sandbox inspection commands.
 type SandboxCmd struct {
-	Audit SandboxAuditCmd `cmd:"" help:"Red-team the enforce-mode sandbox: try every known bypass and report which the OS actually stops."`
+	Audit       SandboxAuditCmd       `cmd:"" help:"Red-team the enforce-mode sandbox: try every known bypass and report which the OS actually stops."`
+	Transparent SandboxTransparentCmd `cmd:"" help:"Transparent redirect: govern apps that ignore proxy configuration (macOS)."`
 }
 
 // SandboxAuditCmd runs the escape matrix against a real profile.
