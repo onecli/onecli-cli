@@ -250,7 +250,9 @@ func sandboxProbesFor(forwarderPort uint16, lanRelayURL string) []sandboxProbe {
 		// short audit that still prints PASS is worse than an error.
 		return direct
 	}
-	probes := append(direct, deferredEgressProbes(home)...)
+	probes := make([]sandboxProbe, 0, len(direct)+8)
+	probes = append(probes, direct...)
+	probes = append(probes, deferredEgressProbes(home)...)
 	probes = append(probes, requiredCapabilities(home)...)
 	if forwarderPort != 0 {
 		probes = append(probes, sandboxProbe{
