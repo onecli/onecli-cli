@@ -24,6 +24,27 @@ func TestEnforceWrapLauncherGatesOnAvailability(t *testing.T) {
 	}
 }
 
+func TestGUIEditorsMarkedForEnforceRejection(t *testing.T) {
+	// `--enforce` fails closed for GUI editors: `onecli run -- cursor` only
+	// opens an Electron app, there's no launched process tree to sandbox,
+	// so wrap mode would sandbox-exec a launcher that governs nothing (and
+	// would inject the ephemeral forwarder port into the app's PERSISTENT
+	// settings.json). The routing keys on configDir != "", so pin that
+	// Cursor carries it — a regression here silently re-enables the broken
+	// path.
+	spec, ok := agentSkillDir("cursor")
+	if !ok {
+		t.Fatal("cursor spec not found")
+	}
+	if spec.configDir == "" {
+		t.Error("cursor must set configDir so --enforce fails closed for the GUI editor")
+	}
+	// A launched CLI agent (Codex) must NOT be treated as a GUI editor.
+	if codex, _ := agentSkillDir("codex"); codex.configDir != "" {
+		t.Error("codex is a CLI agent and must not carry configDir")
+	}
+}
+
 func TestRewriteProxyEnvToLoopback(t *testing.T) {
 	env := map[string]string{
 		"HTTPS_PROXY": "http://x:aoc_tok@gateway.example.com:8443",
@@ -61,7 +82,7 @@ func TestEnforceWrapArgvAppendsQuirks(t *testing.T) {
 	// (e.g. sandbox-exec on macOS) is the sandbox package's concern and is
 	// asserted there; here we assert only the platform-neutral contract:
 	// the agent's own args are present and quirk flags are appended last.
-	got := strings.Join(enforceWrapArgv("/p/wrap.sb", "/bin/codex", []string{"exec", "task"}, "codex"), " ")
+	got := strings.Join(enforceWrapArgv("/p/wrap.sb", "/bin/codex", []string{"exec", "task"}, "codex", 0), " ")
 	if !strings.Contains(got, "exec task") {
 		t.Errorf("agent args missing from argv: %q", got)
 	}
@@ -72,7 +93,7 @@ func TestEnforceWrapArgvAppendsQuirks(t *testing.T) {
 
 func TestEnforceWrapNoticeAndQuirks(t *testing.T) {
 	// An agent without quirks gets neither extra args nor a notice.
-	if len(enforceWrapQuirkArgs("somecli")) != 0 {
+	if len(enforceWrapQuirkArgs("somecli", 0)) != 0 {
 		t.Error("no quirk args expected for an agent without quirks")
 	}
 	if enforceWrapNotice("codex") == "" {

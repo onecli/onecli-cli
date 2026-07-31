@@ -49,6 +49,12 @@ func main() {
 		runEnforceForwarder(pid)
 		return
 	}
+	// Same pattern for the transparent-redirect listener, which must also
+	// outlive the syscall.Exec that replaces this process with the agent.
+	if pid, ok := parseTransparentSidecarArgs(os.Args[1:]); ok {
+		runTransparentSidecar(pid)
+		return
+	}
 
 	// When invoked with no args, --help, or -h, output structured JSON
 	// so agents always get machine-readable output.

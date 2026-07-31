@@ -2,8 +2,14 @@ package main
 
 import (
 	"bytes"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/json"
+	"encoding/pem"
 	"io"
+	"math/big"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -11,6 +17,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/onecli/onecli-cli/pkg/output"
 
@@ -146,13 +153,17 @@ func TestAgentSkillDir(t *testing.T) {
 		ok   bool
 	}{
 		{"claude", agentSpec{agentName: "Claude Code", baseDir: ".claude"}, true},
-		{"cursor", agentSpec{agentName: "Cursor", baseDir: ".cursor", configDir: "Cursor"}, true},
-		{"agent", agentSpec{agentName: "Cursor", baseDir: ".cursor", configDir: "Cursor"}, true},
+		{"cursor", agentSpec{agentName: "Cursor", baseDir: ".cursor", configDir: "Cursor", appBundle: "Cursor"}, true},
+		{"agent", agentSpec{agentName: "Cursor", baseDir: ".cursor", configDir: "Cursor", appBundle: "Cursor"}, true},
+		// The headless Cursor agent is a launched CLI process (no configDir),
+		// so it's enforceable via the OS wrap, unlike the GUI launcher above.
+		{"cursor-agent", agentSpec{agentName: "Cursor Agent", baseDir: ".cursor"}, true},
+		{"/usr/local/bin/cursor-agent", agentSpec{agentName: "Cursor Agent", baseDir: ".cursor"}, true},
 		{"codex", agentSpec{agentName: "Codex", baseDir: ".agents", skipHook: true, nativeProxyConfig: ".codex"}, true},
 		{"hermes", agentSpec{agentName: "Hermes", baseDir: ".hermes", skipHook: true, pluginGateway: true, dockerSandbox: true}, true},
 		{"opencode", agentSpec{agentName: "OpenCode", baseDir: ".opencode"}, true},
 		{"openclaw", agentSpec{agentName: "OpenClaw", baseDir: ".openclaw", skipHook: true, needsAnthropicKey: true}, true},
-		{"/usr/local/bin/cursor", agentSpec{agentName: "Cursor", baseDir: ".cursor", configDir: "Cursor"}, true},
+		{"/usr/local/bin/cursor", agentSpec{agentName: "Cursor", baseDir: ".cursor", configDir: "Cursor", appBundle: "Cursor"}, true},
 		{"unknown", agentSpec{}, false},
 	}
 	for _, tt := range tests {
@@ -1056,5 +1067,151 @@ func writeJSON(t *testing.T, path, content string) {
 	}
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// makeTestCA returns a self-signed CA PEM with the given common name.
+// Each call generates a fresh key, so two calls with the SAME name model
+// exactly the rotation that broke Cursor: identical subject, different key.
+func makeTestCA(t *testing.T, commonName string) []byte {
+	t.Helper()
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("generating key: %v", err)
+	}
+	tmpl := &x509.Certificate{
+		SerialNumber:          big.NewInt(1),
+		Subject:               pkix.Name{CommonName: commonName},
+		NotBefore:             time.Now().Add(-time.Hour),
+		NotAfter:              time.Now().Add(24 * time.Hour),
+		IsCA:                  true,
+		BasicConstraintsValid: true,
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+	if err != nil {
+		t.Fatalf("creating cert: %v", err)
+	}
+	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
+}
+
+// The bug this guards: a rotated gateway CA keeps the SAME subject name, so
+// every name-based check (security find-certificate, dump-trust-settings)
+// reports the CA as present and trusted while Chromium rejects every request
+// with ERR_CERT_AUTHORITY_INVALID. Only the key distinguishes them.
+func TestPublicKeyOfPEM_DistinguishesRotatedCAWithIdenticalName(t *testing.T) {
+	const name = "OneCLI Local Gateway CA"
+	oldCA := makeTestCA(t, name)
+	newCA := makeTestCA(t, name)
+
+	oldKey, err := publicKeyOfPEM(oldCA)
+	if err != nil {
+		t.Fatalf("parsing old CA: %v", err)
+	}
+	newKey, err := publicKeyOfPEM(newCA)
+	if err != nil {
+		t.Fatalf("parsing new CA: %v", err)
+	}
+
+	if bytes.Equal(oldKey, newKey) {
+		t.Fatal("rotated CAs with the same subject name compared equal: the staleness check cannot work")
+	}
+
+	// Same certificate must compare equal, or the check would warn on every
+	// launch and be trained away as noise.
+	sameKey, err := publicKeyOfPEM(oldCA)
+	if err != nil {
+		t.Fatalf("re-parsing old CA: %v", err)
+	}
+	if !bytes.Equal(oldKey, sameKey) {
+		t.Fatal("the same CA did not compare equal to itself")
+	}
+}
+
+// The keychain returns every matching cert concatenated, and after a rotation
+// that legitimately includes several. The live CA must be found among them.
+func TestSplitPEMCerts_FindsLiveCAAmongStaleOnes(t *testing.T) {
+	const name = "OneCLI Local Gateway CA"
+	stale1 := makeTestCA(t, name)
+	stale2 := makeTestCA(t, name)
+	live := makeTestCA(t, name)
+
+	var keychain bytes.Buffer
+	keychain.Write(stale1)
+	keychain.Write(stale2)
+	keychain.Write(live)
+
+	blocks := splitPEMCerts(keychain.Bytes())
+	if len(blocks) != 3 {
+		t.Fatalf("expected 3 certs, got %d", len(blocks))
+	}
+
+	liveKey, err := publicKeyOfPEM(live)
+	if err != nil {
+		t.Fatalf("parsing live CA: %v", err)
+	}
+	found := false
+	for _, b := range blocks {
+		if k, err := publicKeyOfPEM(b); err == nil && bytes.Equal(k, liveKey) {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("live CA not found among the keychain certs: a valid setup would be reported as stale")
+	}
+
+	// And a CA that is NOT installed must not be found, or the check would
+	// stay silent in exactly the broken case it exists to catch.
+	notInstalled := makeTestCA(t, name)
+	notInstalledKey, err := publicKeyOfPEM(notInstalled)
+	if err != nil {
+		t.Fatalf("parsing uninstalled CA: %v", err)
+	}
+	for _, b := range blocks {
+		if k, err := publicKeyOfPEM(b); err == nil && bytes.Equal(k, notInstalledKey) {
+			t.Fatal("an uninstalled CA was reported as present")
+		}
+	}
+}
+
+// The bare CA file must track the bundle, since it is what the documented
+// `security add-trusted-cert` command installs. A stale copy here is what
+// caused the original failure.
+func TestWriteBareGatewayCA_RefreshesOnRotation(t *testing.T) {
+	dir := t.TempDir()
+	oldCA := makeTestCA(t, "OneCLI Local Gateway CA")
+	newCA := makeTestCA(t, "OneCLI Local Gateway CA")
+
+	if err := writeBareGatewayCA(dir, string(oldCA)); err != nil {
+		t.Fatalf("writing old CA: %v", err)
+	}
+	if err := writeBareGatewayCA(dir, string(newCA)); err != nil {
+		t.Fatalf("writing new CA: %v", err)
+	}
+
+	got, err := os.ReadFile(filepath.Join(dir, "gateway-ca.pem"))
+	if err != nil {
+		t.Fatalf("reading CA file: %v", err)
+	}
+	if !bytes.Equal(got, newCA) {
+		t.Fatal("gateway-ca.pem still holds the pre-rotation CA: trusting it would fail as ERR_CERT_AUTHORITY_INVALID")
+	}
+}
+
+// An empty CA (unauthenticated/offline session) must not truncate a good file.
+func TestWriteBareGatewayCA_EmptyPEMLeavesFileIntact(t *testing.T) {
+	dir := t.TempDir()
+	good := makeTestCA(t, "OneCLI Local Gateway CA")
+	if err := writeBareGatewayCA(dir, string(good)); err != nil {
+		t.Fatalf("writing CA: %v", err)
+	}
+	if err := writeBareGatewayCA(dir, "   "); err != nil {
+		t.Fatalf("empty write returned error: %v", err)
+	}
+	got, err := os.ReadFile(filepath.Join(dir, "gateway-ca.pem"))
+	if err != nil {
+		t.Fatalf("reading CA file: %v", err)
+	}
+	if !bytes.Equal(got, good) {
+		t.Fatal("an empty CA overwrote a valid one")
 	}
 }

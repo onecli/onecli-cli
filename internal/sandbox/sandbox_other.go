@@ -18,6 +18,18 @@ func available() error {
 
 func materialize(uint16) (string, error) { return "", available() }
 
+// Options mirrors the darwin type so callers compile everywhere. Transparent
+// redirect is macOS-only today (it depends on pf); the Linux equivalent is
+// an nftables REDIRECT inside the network namespace.
+type Options struct {
+	ForwarderPort uint16
+	Transparent   bool
+}
+
+func materializeOpts(Options) (string, error) { return "", available() }
+
+func profileOpts(Options) string { return "" }
+
 func launcherPath() string { return "" }
 
 func profile(uint16) string { return "" }
