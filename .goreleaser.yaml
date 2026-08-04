@@ -11,6 +11,12 @@ before:
 builds:
   - main: ./cmd/onecli
     binary: onecli
+    env:
+      # Without this, the native (linux) build links against the release
+      # runner's glibc and the published binary refuses to start on any
+      # distro with an older one. The source imports no cgo, so disabling
+      # it costs nothing and makes every artifact statically linked.
+      - CGO_ENABLED=0
     ldflags:
       - -s -w
       - -X main.version={{.Version}}
