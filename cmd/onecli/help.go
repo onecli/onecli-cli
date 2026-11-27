@@ -442,14 +442,19 @@ func (cmd *HelpCmd) Run(out *output.Writer) error {
 			}},
 			{Name: "vaults list", Description: "List external vault connections (e.g. 1Password)."},
 			{Name: "counts", Description: "Show the project's resource counts."},
-			{Name: "auth login", Description: "Store API key for authentication."},
+			{Name: "auth login", Description: "Store an API key, or sign in with --browser.", Args: []ArgInfo{
+				{Name: "--browser", Description: "Sign in in a browser; the server makes a key for this terminal and hands it over once."},
+				{Name: "--no-open", Description: "With --browser: print the link only."},
+				{Name: "--timeout", Description: "With --browser: how long to wait (default 5m)."},
+				{Name: "--api-key", Description: "API key to store (oc_... format)."},
+			}},
 			{Name: "auth logout", Description: "Remove stored API key."},
 			{Name: "auth status", Description: "Show authentication status."},
 			{Name: "auth update", Description: "Update your profile (display name).", Args: []ArgInfo{
 				{Name: "--name", Required: true, Description: "New display name."},
 			}},
-			{Name: "auth api-key", Description: "Show your current API key."},
-			{Name: "auth regenerate-api-key", Description: "Regenerate your API key."},
+			{Name: "auth api-key", Description: "List your API keys (never their values)."},
+			{Name: "auth regenerate-api-key", Description: "Revoke a key with --revoke <id>; servers before 3.0: replace your key."},
 			{Name: "config get <key>", Description: "Get a config value. Keys: api-host, project, agent."},
 			{Name: "config set <key> <value>", Description: "Set a config value. Keys: api-host, project, agent."},
 			{Name: "sandbox audit", Description: "Red-team the enforce-mode sandbox: attempt every known egress bypass and report which the OS actually stops. Exits non-zero if any hole is found.", Args: []ArgInfo{
