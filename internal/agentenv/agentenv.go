@@ -180,19 +180,49 @@ func WriteFileFresh(path string, data []byte, mode os.FileMode) error {
 	return nil
 }
 
-// Write checks s and writes agent.env in dir, mode 0600.
+// Write checks s and writes agent.env in dir, mode 0600. dir must not be
+// writable by group or others: anyone who can write there could swap the
+// file for their own between writes. A dir this call creates is set to
+// 0700. One that already exists with wider write access is refused, never
+// changed, since it may be shared on purpose.
 func Write(dir string, s Settings) (string, error) {
 	if err := s.Check(); err != nil {
 		return "", err
 	}
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return "", fmt.Errorf("creating %s: %w", dir, err)
+	if err := ensurePrivateDir(dir); err != nil {
+		return "", err
 	}
 	path := filepath.Join(dir, FileName)
 	if err := WriteFileFresh(path, []byte(s.Render()), 0o600); err != nil {
 		return "", err
 	}
 	return path, nil
+}
+
+// ensurePrivateDir makes dir 0700 if missing, and refuses an existing dir
+// (or a link to one) that group or others can write.
+func ensurePrivateDir(dir string) error {
+	st, err := os.Stat(dir)
+	if errors.Is(err, os.ErrNotExist) {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			return fmt.Errorf("creating %s: %w", dir, err)
+		}
+		// MkdirAll applies the umask. Set the mode the file's safety needs.
+		if err := os.Chmod(dir, 0o700); err != nil {
+			return fmt.Errorf("setting mode on %s: %w", dir, err)
+		}
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("checking %s: %w", dir, err)
+	}
+	if !st.IsDir() {
+		return fmt.Errorf("%s is not a directory", dir)
+	}
+	if st.Mode().Perm()&0o022 != 0 {
+		return fmt.Errorf("%s is writable by group or others (mode %04o): run chmod go-w %s, or pick another directory", dir, st.Mode().Perm(), dir)
+	}
+	return nil
 }
 
 // Read parses agent.env. Only lines of the form export NAME='value' count.
@@ -332,7 +362,9 @@ func RemoveProfileLine(profile, envFile string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	if err := os.WriteFile(profile, []byte(strings.Join(kept, "\n")), st.Mode().Perm()); err != nil {
+	// Through a fresh file and a rename, so a link at profile is replaced,
+	// never written through. The profile keeps its mode.
+	if err := WriteFileFresh(profile, []byte(strings.Join(kept, "\n")), st.Mode().Perm()); err != nil {
 		return false, fmt.Errorf("writing %s: %w", profile, err)
 	}
 	return true, nil
