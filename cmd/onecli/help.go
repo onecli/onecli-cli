@@ -39,6 +39,48 @@ func (cmd *HelpCmd) Run(out *output.Writer) error {
 		Version:     version,
 		Description: "CLI for managing OneCLI agents, secrets, rules, projects, and configuration.",
 		Commands: []CommandInfo{
+			{Name: "status", Description: "Show whether this agent is connected, and to which vault.", Args: []ArgInfo{
+				{Name: "--fields", Description: "Comma-separated fields to include."},
+				{Name: "--quiet", Description: "Output only the specified field."},
+			}},
+			{Name: "connect <connect-token>", Description: "Connect this agent to a vault with a connect token. Writes agent.env.", Args: []ArgInfo{
+				{Name: "<connect-token>", Description: "The vault's connect token (oc_connect_...), or - to read it from standard input."},
+				{Name: "--credential", Description: "Write agent.env for an agent credential you already hold, with no trade."},
+				{Name: "--name", Description: "The agent's name."},
+				{Name: "--replace", Description: "Move an agent on another vault to this one."},
+				{Name: "--no-profile", Description: "Do not add the line that reads agent.env to your shell profile."},
+				{Name: "--dry-run", Description: "Show what would be sent and written."},
+			}},
+			{Name: "signup", Description: "Ask your person to connect this agent: prints a link and a code, then waits.", Args: []ArgInfo{
+				{Name: "--name", Description: "The agent's name."},
+				{Name: "--timeout", Description: "Stop waiting after this long (default 15m)."},
+				{Name: "--no-profile", Description: "Do not add the line that reads agent.env to your shell profile."},
+				{Name: "--dry-run", Description: "Show what would be sent."},
+			}},
+			{Name: "attach <agent>", Description: "Put the OneCLI skill and proxy settings into this agent's own config.", Args: []ArgInfo{
+				{Name: "<agent>", Description: "claude, cursor, codex, hermes, opencode or openclaw. Unset: every one found."},
+				{Name: "--dry-run", Description: "Show what would be written."},
+			}},
+			{Name: "disconnect", Description: "Remove this agent and delete agent.env.", Args: []ArgInfo{
+				{Name: "--local-only", Description: "Only delete agent.env; do not ask the server to remove the agent."},
+				{Name: "--dry-run", Description: "Show what would be removed."},
+			}},
+			{Name: "items", Description: "List what this agent can use: its vault's items, never a value.", Args: []ArgInfo{
+				{Name: "--fields", Description: "Comma-separated fields to include."},
+				{Name: "--quiet", Description: "Output only the specified field, one per line."},
+			}},
+			{Name: "check <method> <url>", Description: "Ask what would happen to one call, without sending it.", Args: []ArgInfo{
+				{Name: "<method>", Required: true, Description: "The HTTP method, for example GET."},
+				{Name: "<url>", Required: true, Description: "The full http or https address."},
+			}},
+			{Name: "request <service>", Description: "Ask your person to add an item this agent lacks. Prints a link for them.", Args: []ArgInfo{
+				{Name: "<service>", Required: true, Description: "For example github or api.example.com."},
+			}},
+			{Name: "exec <command>", Description: "Run one command with the proxy and the OneCLI certificate set for it only.", Args: []ArgInfo{
+				{Name: "<command>", Required: true, Description: "The command and its arguments, after --."},
+				{Name: "--no-ca", Description: "Do not set the OneCLI certificate."},
+				{Name: "--dry-run", Description: "Show the command and the variables it would get."},
+			}},
 			{Name: "run", Description: "Run a command with OneCLI gateway access.", Args: []ArgInfo{
 				{Name: "<command>", Required: true, Description: "Command to execute (e.g. claude, cursor, codex)."},
 				{Name: "--project, -p", Description: "Project slug."},
