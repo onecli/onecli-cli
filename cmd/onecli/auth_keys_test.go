@@ -327,3 +327,19 @@ func TestShowKeysOutputHasOneHint(t *testing.T) {
 		t.Errorf("want one \"hint\" key, got %d in %s", n, stdout.String())
 	}
 }
+
+// Every "how do I get a key" pointer names the browser login first, and
+// warns that a Settings-page key needs a project and cannot use run: a
+// page key names no workspace (checked live against a 3.0 API).
+func TestMakeKeyActionOrder(t *testing.T) {
+	b := strings.Index(makeKeyAction, "onecli auth login --browser")
+	p := strings.Index(makeKeyAction, "Settings > API keys")
+	if b < 0 || p < 0 || b > p {
+		t.Fatalf("browser login must come first: %q", makeKeyAction)
+	}
+	for _, s := range []string{"onecli config set project", "onecli run"} {
+		if !strings.Contains(makeKeyAction, s) {
+			t.Errorf("makeKeyAction lacks %q", s)
+		}
+	}
+}

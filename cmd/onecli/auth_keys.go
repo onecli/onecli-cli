@@ -12,9 +12,13 @@ import (
 	"github.com/onecli/onecli-cli/pkg/validate"
 )
 
-// makeKeyAction is the next step wherever the CLI cannot make a key: a key
-// is made by a signed-in person and shown once.
-const makeKeyAction = "make a key in Settings > API keys, then `onecli auth login --api-key <key>`"
+// makeKeyAction is the next step wherever the CLI cannot make a key itself.
+// The browser login comes first: its key lands on your default workspace,
+// so every command works. A key from Settings > API keys names no
+// workspace, so it needs a project setting, and `onecli run` refuses it.
+const makeKeyAction = "run `onecli auth login --browser` (a key for this terminal, works with every command). " +
+	"Or make a key in Settings > API keys, `onecli auth login --api-key <key>` and `onecli config set project <workspace>`; " +
+	"that key cannot use `onecli run`"
 
 // revokeHint is how to cut off a key, for example a leaked one.
 const revokeHint = "To cut off a key: `onecli auth regenerate-api-key --revoke <id>` (ids from `onecli auth api-key`)"

@@ -3,7 +3,9 @@
 ## Quick Start
 
 ```bash
-# Authenticate first
+# Authenticate first: sign in in a browser (recommended)
+onecli auth login --browser
+# or store a key you already have
 onecli auth login --api-key oc_...
 
 # Verify authentication
@@ -145,8 +147,12 @@ onecli auth api-key                              # your keys (never their values
 onecli auth regenerate-api-key --revoke <id>     # cut off a key, e.g. a leaked one
 ```
 
-A new key is made in the dashboard under Settings > API keys and shown once;
-store it with `onecli auth login --api-key <key>`. On servers before 3.0,
+To get a new key, run `onecli auth login --browser`: the server makes a key
+for this terminal and lands it on your default workspace, so every command
+works. A key made under Settings > API keys names no workspace: after
+`onecli auth login --api-key <key>`, also run
+`onecli config set project <workspace>`, and note that `onecli run` refuses
+such a key. On servers before 3.0,
 `onecli auth api-key` prints the stored key and `onecli auth regenerate-api-key`
 replaces it.
 

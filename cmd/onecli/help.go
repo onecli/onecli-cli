@@ -442,7 +442,12 @@ func (cmd *HelpCmd) Run(out *output.Writer) error {
 			}},
 			{Name: "vaults list", Description: "List external vault connections (e.g. 1Password)."},
 			{Name: "counts", Description: "Show the project's resource counts."},
-			{Name: "auth login", Description: "Store API key for authentication."},
+			{Name: "auth login", Description: "Store an API key, or sign in with --browser.", Args: []ArgInfo{
+				{Name: "--browser", Description: "Sign in in a browser; the server makes a key for this terminal and hands it over once."},
+				{Name: "--no-open", Description: "With --browser: print the link only."},
+				{Name: "--timeout", Description: "With --browser: how long to wait (default 5m)."},
+				{Name: "--api-key", Description: "API key to store (oc_... format)."},
+			}},
 			{Name: "auth logout", Description: "Remove stored API key."},
 			{Name: "auth status", Description: "Show authentication status."},
 			{Name: "auth update", Description: "Update your profile (display name).", Args: []ArgInfo{
