@@ -15,6 +15,7 @@ import (
 
 	"github.com/onecli/onecli-cli/internal/agentapi"
 	"github.com/onecli/onecli-cli/internal/agentenv"
+	"github.com/onecli/onecli-cli/internal/api"
 	"github.com/onecli/onecli-cli/pkg/exitcode"
 	"github.com/onecli/onecli-cli/pkg/output"
 )
@@ -74,6 +75,76 @@ func gatewayPEM(client *agentapi.Client, dir string) ([]byte, error) {
 	return client.CA(newContext())
 }
 
+// agentRunConfig builds the gateway configuration from this agent's own
+// credential, in the same shape GET /v1/container-config answers, so run
+// and exec build the child's environment with the same code.
+func agentRunConfig(client *agentapi.Client, withCA bool) (*api.ContainerConfig, error) {
+	s, dir, err := agentSettings(client)
+	if err != nil {
+		return nil, err
+	}
+	cfg := &api.ContainerConfig{Env: map[string]string{}}
+	for _, kv := range s.Pairs() {
+		if slices.Contains(caTrustKeys, kv[0]) || kv[0] == "PGSSLROOTCERT" {
+			// Set by buildChildEnv to the combined bundle, or not at all.
+			continue
+		}
+		cfg.Env[kv[0]] = kv[1]
+	}
+	if withCA {
+		pem, err := gatewayPEM(client, dir)
+		if err != nil {
+			return nil, fmt.Errorf("could not get the gateway's certificate: %w", err)
+		}
+		cfg.CACertificate = string(pem)
+	}
+	return cfg, nil
+}
+
+// hasAgentCredential reports whether this place holds an agent credential.
+func hasAgentCredential() bool {
+	dir, err := agentenv.Dir()
+	if err != nil {
+		return false
+	}
+	cred, _ := agentenv.Credential(dir)
+	return cred != ""
+}
+
+// runConfig picks run's configuration: the agent's own credential when it
+// has one and no --agent flag names another, else container-config.
+func runConfig(client *api.Client, agentFlag, agent string) (*api.ContainerConfig, bool, error) {
+	if agentFlag == "" && hasAgentCredential() {
+		cfg, err := agentRunConfig(newAgentAPI(), true)
+		return cfg, true, err
+	}
+	cfg, err := client.GetContainerConfig(newContext(), agent)
+	return cfg, false, err
+}
+
+// childEnv is the environment of a command run with gateway access, shared
+// by run and exec. caPath "" means no certificate is set. withPG also points
+// Postgres clients at the certificate (the agent credential path, as
+// agent.env does).
+func childEnv(cfg *api.ContainerConfig, caPath string, withPG bool) []string {
+	env := buildChildEnv(os.Environ(), cfg.Env, caPath)
+	if caPath != "" && withPG {
+		env = append(stripKey(env, "PGSSLROOTCERT"), "PGSSLROOTCERT="+caPath)
+	}
+	return suppressUndiciProxyWarning(env)
+}
+
+// stripKey drops every KEY=... entry from env.
+func stripKey(env []string, key string) []string {
+	out := env[:0:0]
+	for _, kv := range env {
+		if !strings.HasPrefix(kv, key+"=") {
+			out = append(out, kv)
+		}
+	}
+	return out
+}
+
 func (c *ExecCmd) Run(out *output.Writer) error {
 	args := c.Args
 	if len(args) > 0 && args[0] == "--" {
@@ -87,29 +158,18 @@ func (c *ExecCmd) Run(out *output.Writer) error {
 		return &agentError{code: exitcode.CodeNotFound, exit: exitcode.NotFound,
 			msg: fmt.Sprintf("command not found: %s", args[0])}
 	}
-	client := newAgentAPI()
-	s, dir, err := agentSettings(client)
+	cfg, err := agentRunConfig(newAgentAPI(), !c.NoCA && !c.DryRun)
 	if err != nil {
 		return err
 	}
-	serverEnv := map[string]string{}
-	for _, kv := range s.Pairs() {
-		serverEnv[kv[0]] = kv[1]
-	}
 	if c.DryRun {
-		names := make([]string, 0, len(serverEnv)+len(caTrustKeys))
-		for k := range serverEnv {
-			if c.NoCA && (slices.Contains(caTrustKeys, k) || k == "PGSSLROOTCERT") {
-				continue
-			}
+		names := make([]string, 0, len(cfg.Env)+len(caTrustKeys)+1)
+		for k := range cfg.Env {
 			names = append(names, k)
 		}
 		if !c.NoCA {
-			for _, k := range caTrustKeys {
-				if _, ok := serverEnv[k]; !ok {
-					names = append(names, k)
-				}
-			}
+			names = append(names, caTrustKeys...)
+			names = append(names, "PGSSLROOTCERT")
 		}
 		slices.Sort(names)
 		return out.WriteDryRun("Would run the command with this agent's proxy settings", map[string]any{
@@ -117,30 +177,17 @@ func (c *ExecCmd) Run(out *output.Writer) error {
 		})
 	}
 	caPath := ""
-	if c.NoCA {
-		for _, k := range caTrustKeys {
-			delete(serverEnv, k)
-		}
-		delete(serverEnv, "PGSSLROOTCERT")
-	} else {
-		pem, err := gatewayPEM(client, dir)
-		if err != nil {
-			return fmt.Errorf("could not get the gateway's certificate: %w", err)
-		}
+	if cfg.CACertificate != "" {
 		// System roots plus the gateway's: SSL_CERT_FILE replaces a trust
 		// store, and the command may also reach hosts past the proxy.
-		caPath, err = writeGatewayCACert(string(pem))
+		caPath, err = writeGatewayCACert(cfg.CACertificate)
 		if err != nil {
 			return err
 		}
-		serverEnv["PGSSLROOTCERT"] = caPath
 	}
-	env := buildChildEnv(os.Environ(), serverEnv, caPath)
-	env = suppressUndiciProxyWarning(env)
-
 	cmd := exec.Command(binary, args[1:]...)
 	cmd.Args[0] = args[0]
-	cmd.Env = env
+	cmd.Env = childEnv(cfg, caPath, true)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, execStdout, os.Stderr
 	if err := cmd.Run(); err != nil {
 		var ee *exec.ExitError
