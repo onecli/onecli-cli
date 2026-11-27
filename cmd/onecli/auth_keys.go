@@ -49,10 +49,11 @@ type AuthApiKeyCmd struct {
 }
 
 // AuthKeysResponse is the JSON output of `auth api-key` on a server with
-// /v2/keys. A listing never holds a key's value.
+// /v2/keys. A listing never holds a key's value. The field is not named
+// "hint": pkg/output adds its own "hint" to every object.
 type AuthKeysResponse struct {
-	Keys []api.Key `json:"keys"`
-	Hint string    `json:"hint"`
+	Keys    []api.Key `json:"keys"`
+	MakeKey string    `json:"makeKey"`
 }
 
 func (c *AuthApiKeyCmd) Run(out *output.Writer) error {
@@ -82,8 +83,8 @@ func showKeys(ctx context.Context, client keysClient) (any, error) {
 		return nil, err
 	}
 	return AuthKeysResponse{
-		Keys: keys,
-		Hint: "A key's value is shown once, when it is made. To use a new key: " + makeKeyAction + ". " + revokeHint + ".",
+		Keys:    keys,
+		MakeKey: "A key's value is shown once, when it is made. To use a new key: " + makeKeyAction + ". " + revokeHint + ".",
 	}, nil
 }
 

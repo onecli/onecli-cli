@@ -124,7 +124,7 @@ func TestShowKeys(t *testing.T) {
 		{
 			name:      "3.0 lists keys, never a value",
 			srv:       fakeKeyServer{v3: true},
-			wantOut:   []string{`"id":"k_old"`, `"hint"`, "Settings > API keys"},
+			wantOut:   []string{`"id":"k_old"`, `"makeKey"`, "Settings > API keys"},
 			notOut:    []string{"oc_", `"apiKey"`},
 			wantCalls: "GET /v2/keys",
 		},
@@ -305,5 +305,25 @@ func TestWriteActionError(t *testing.T) {
 				t.Errorf("stderr=%s stdout=%s", compact.String(), stdout.String())
 			}
 		})
+	}
+}
+
+// pkg/output adds a "hint" key to every object, so the listing must not
+// carry one of its own: a duplicate key is invalid for many JSON readers.
+func TestShowKeysOutputHasOneHint(t *testing.T) {
+	srv := httptest.NewServer(&fakeKeyServer{v3: true})
+	defer srv.Close()
+	v, err := showKeys(context.Background(), api.New(srv.URL, "oc_test"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	out := output.NewWithWriters(&stdout, &stderr)
+	out.SetHint("Manage authentication")
+	if err := out.Write(v); err != nil {
+		t.Fatal(err)
+	}
+	if n := strings.Count(stdout.String(), `"hint"`); n != 1 {
+		t.Errorf("want one \"hint\" key, got %d in %s", n, stdout.String())
 	}
 }
