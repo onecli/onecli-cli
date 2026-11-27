@@ -17,6 +17,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/onecli/onecli-cli/internal/agentenv"
 	"github.com/onecli/onecli-cli/internal/api"
 	"github.com/onecli/onecli-cli/internal/config"
 	"github.com/onecli/onecli-cli/pkg/output"
@@ -69,12 +70,14 @@ func (c *RunCmd) Run(out *output.Writer) error {
 		return fmt.Errorf("command not found: %s — is it installed and in your PATH?", c.Args[0])
 	}
 
-	// Fetch gateway configuration from the API.
+	// Gateway configuration: from this agent's own credential (agent.env or
+	// ONECLI_AGENT_CREDENTIAL) when it has one and no --agent is named,
+	// else from GET /v1/container-config, as for an older setup.
 	client, err := newClient()
 	if err != nil {
 		return err
 	}
-	cfg, err := client.GetContainerConfig(newContext(), agent)
+	cfg, fromAgentEnv, err := runConfig(client, c.Agent, agent)
 	if err != nil {
 		return err
 	}
@@ -118,10 +121,16 @@ func (c *RunCmd) Run(out *output.Writer) error {
 		if !c.NoCA && cfg.CACertificate != "" {
 			injected = append(injected, caTrustKeys...)
 		}
+		source := "container-config"
+		if fromAgentEnv {
+			source = "agent-credential"
+		}
+		slices.Sort(injected)
 		return out.WriteDryRun("Would exec command with OneCLI gateway", map[string]any{
 			"binary":       binary,
 			"args":         c.Args,
 			"env_injected": injected,
+			"config":       source,
 		})
 	}
 
@@ -165,18 +174,10 @@ func (c *RunCmd) Run(out *output.Writer) error {
 		}
 	}
 
-	// Build child environment.
-	env := buildChildEnv(os.Environ(), cfg.Env, caPath)
-
+	// Build child environment, with the same code exec uses. It also mutes
+	// Node's one-time EnvHttpProxyAgent warning when NODE_USE_ENV_PROXY is set.
+	env := childEnv(cfg, caPath, fromAgentEnv)
 	env = append(env, "ONECLI_GATEWAY=true")
-
-	// When the gateway routes Node's own egress via NODE_USE_ENV_PROXY, Node
-	// prints a one-time "[UNDICI-EHPA] EnvHttpProxyAgent is experimental"
-	// warning to stderr on startup — the mechanism announcing itself, not an
-	// error. Mute just that warning code (Node 22+ --disable-warning) so
-	// gateway plumbing doesn't leak noise into the agent's output. Scoped to
-	// the flag's presence so we never alter Node behavior otherwise.
-	env = suppressUndiciProxyWarning(env)
 
 	// For known agents, fetch the agent-specific skill variant and install
 	// to the agent's skill directory. Also optionally register a hook.
@@ -783,7 +784,7 @@ func upsertGatewayProxyURL(content, proxyURL string) (string, proxyURLStatus) {
 		if m[2] == proxyURL {
 			return content, proxyURLCurrent
 		}
-		if !strings.Contains(m[2], "aoc_") {
+		if !strings.Contains(m[2], "aoc_") && !strings.Contains(m[2], agentenv.CredentialPrefix) {
 			return content, proxyURLForeign
 		}
 		lines[i] = m[1] + `"` + proxyURL + `"`
