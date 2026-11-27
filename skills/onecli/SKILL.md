@@ -138,12 +138,17 @@ onecli agents grants list --id <agent-id>   # attach intent
 onecli agents credentials --id <agent-id>   # effective (org guardrails applied)
 ```
 
-### View and regenerate API key
+### List and revoke API keys
 
 ```bash
-onecli auth api-key
-onecli auth regenerate-api-key
+onecli auth api-key                              # your keys (never their values)
+onecli auth regenerate-api-key --revoke <id>     # cut off a key, e.g. a leaked one
 ```
+
+A new key is made in the dashboard under Settings > API keys and shown once;
+store it with `onecli auth login --api-key <key>`. On servers before 3.0,
+`onecli auth api-key` prints the stored key and `onecli auth regenerate-api-key`
+replaces it.
 
 ## Output Format
 

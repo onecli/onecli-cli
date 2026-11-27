@@ -21,8 +21,8 @@ type AuthCmd struct {
 	Logout           AuthLogoutCmd           `cmd:"" help:"Remove stored API key."`
 	Status           AuthStatusCmd           `cmd:"" help:"Show authentication status."`
 	Update           AuthUpdateCmd           `cmd:"" help:"Update your profile (display name)."`
-	ApiKey           AuthApiKeyCmd           `cmd:"api-key" help:"Show your current API key."`
-	RegenerateApiKey AuthRegenerateApiKeyCmd `cmd:"regenerate-api-key" help:"Regenerate your API key."`
+	ApiKey           AuthApiKeyCmd           `cmd:"api-key" help:"List your API keys (never their values)."`
+	RegenerateApiKey AuthRegenerateApiKeyCmd `cmd:"regenerate-api-key" help:"Revoke a key with --revoke <id>. Servers before 3.0: replace your key."`
 }
 
 // AuthUpdateCmd is `onecli auth update`.
@@ -162,41 +162,4 @@ func (c *AuthStatusCmd) Run(out *output.Writer) error {
 		Email:         user.Email,
 		Name:          user.Name,
 	})
-}
-
-// AuthApiKeyCmd is `onecli auth api-key`.
-type AuthApiKeyCmd struct {
-	Fields string `optional:"" help:"Comma-separated list of fields to include in output."`
-}
-
-func (c *AuthApiKeyCmd) Run(out *output.Writer) error {
-	client, err := newClient()
-	if err != nil {
-		return err
-	}
-	resp, err := client.GetAPIKey(newContext())
-	if err != nil {
-		return err
-	}
-	return out.WriteFiltered(resp, c.Fields)
-}
-
-// AuthRegenerateApiKeyCmd is `onecli auth regenerate-api-key`.
-type AuthRegenerateApiKeyCmd struct {
-	DryRun bool `optional:"" name:"dry-run" help:"Validate the request without executing it."`
-}
-
-func (c *AuthRegenerateApiKeyCmd) Run(out *output.Writer) error {
-	if c.DryRun {
-		return out.WriteDryRun("Would regenerate API key", nil)
-	}
-	client, err := newClient()
-	if err != nil {
-		return err
-	}
-	resp, err := client.RegenerateAPIKey(newContext())
-	if err != nil {
-		return err
-	}
-	return out.Write(resp)
 }

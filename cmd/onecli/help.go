@@ -448,8 +448,8 @@ func (cmd *HelpCmd) Run(out *output.Writer) error {
 			{Name: "auth update", Description: "Update your profile (display name).", Args: []ArgInfo{
 				{Name: "--name", Required: true, Description: "New display name."},
 			}},
-			{Name: "auth api-key", Description: "Show your current API key."},
-			{Name: "auth regenerate-api-key", Description: "Regenerate your API key."},
+			{Name: "auth api-key", Description: "List your API keys (never their values)."},
+			{Name: "auth regenerate-api-key", Description: "Revoke a key with --revoke <id>; servers before 3.0: replace your key."},
 			{Name: "config get <key>", Description: "Get a config value. Keys: api-host, project, agent."},
 			{Name: "config set <key> <value>", Description: "Set a config value. Keys: api-host, project, agent."},
 			{Name: "sandbox audit", Description: "Red-team the enforce-mode sandbox: attempt every known egress bypass and report which the OS actually stops. Exits non-zero if any hole is found.", Args: []ArgInfo{

@@ -91,6 +91,9 @@ func main() {
 
 // handleError maps errors to appropriate exit codes and structured output.
 func handleError(out *output.Writer, err error) {
+	if exit, ok := writeActionError(out, err); ok {
+		os.Exit(exit)
+	}
 	var apiErr *api.APIError
 	if errors.As(err, &apiErr) {
 		// A 400/401 demanding a project header is a scoping problem, not an
