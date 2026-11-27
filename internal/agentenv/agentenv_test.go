@@ -223,3 +223,88 @@ func TestValidTokens(t *testing.T) {
 		}
 	}
 }
+
+func TestWriteMakesANewDirPrivate(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "a", "b")
+	if _, err := Write(dir, good()); err != nil {
+		t.Fatal(err)
+	}
+	st, err := os.Stat(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Mode().Perm() != 0o700 {
+		t.Fatalf("new dir mode = %04o, want 0700", st.Mode().Perm())
+	}
+}
+
+func TestWriteRefusesAGroupOrWorldWritableDir(t *testing.T) {
+	for _, mode := range []os.FileMode{0o770, 0o707, 0o777, os.ModeSticky | 0o777} {
+		dir := filepath.Join(t.TempDir(), "shared")
+		if err := os.Mkdir(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(dir, mode); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Write(dir, good()); err == nil || !strings.Contains(err.Error(), "writable by group or others") {
+			t.Fatalf("mode %04o: err = %v, want a refusal", mode, err)
+		}
+		if _, err := os.Lstat(filepath.Join(dir, FileName)); !os.IsNotExist(err) {
+			t.Fatalf("mode %04o: agent.env was written", mode)
+		}
+		st, _ := os.Stat(dir)
+		if st.Mode()&(os.ModePerm|os.ModeSticky) != mode {
+			t.Fatalf("mode %04o: the dir's mode was changed to %v", mode, st.Mode())
+		}
+	}
+}
+
+func TestWriteAcceptsAnExistingPrivateDir(t *testing.T) {
+	for _, mode := range []os.FileMode{0o700, 0o755, 0o750} {
+		dir := filepath.Join(t.TempDir(), "mine")
+		if err := os.Mkdir(dir, mode); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(dir, mode); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Write(dir, good()); err != nil {
+			t.Fatalf("mode %04o: %v", mode, err)
+		}
+	}
+}
+
+func TestRemoveProfileLineReplacesALinkAndKeepsTheMode(t *testing.T) {
+	home := t.TempDir()
+	target := filepath.Join(t.TempDir(), "elsewhere")
+	env := "/x/agent.env"
+	original := "export A=1\n" + ProfileLine(env) + "\n"
+	if err := os.WriteFile(target, []byte(original), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(target, 0o640); err != nil {
+		t.Fatal(err)
+	}
+	profile := filepath.Join(home, ".profile")
+	if err := os.Symlink(target, profile); err != nil {
+		t.Skip("symlinks not available")
+	}
+	changed, err := RemoveProfileLine(profile, env)
+	if err != nil || !changed {
+		t.Fatalf("remove: %v %v", changed, err)
+	}
+	if data, _ := os.ReadFile(target); string(data) != original {
+		t.Fatalf("the link target was written through: %q", data)
+	}
+	st, err := os.Lstat(profile)
+	if err != nil || st.Mode()&os.ModeSymlink != 0 {
+		t.Fatal("profile is still a link")
+	}
+	if st.Mode().Perm() != 0o640 {
+		t.Fatalf("profile mode = %04o, want the original 0640", st.Mode().Perm())
+	}
+	if data, _ := os.ReadFile(profile); strings.Contains(string(data), env) {
+		t.Fatalf("line not removed: %q", data)
+	}
+}
