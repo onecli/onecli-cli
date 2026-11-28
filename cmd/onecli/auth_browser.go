@@ -96,8 +96,9 @@ func shortCode(code string) string {
 }
 
 // openBrowser opens url in the system browser. The URL was checked to be
-// http(s) and is passed as one argument, never through a shell.
-func openBrowser(url string) error {
+// http(s) and is passed as one argument, never through a shell. A var so
+// tests never launch a real browser.
+var openBrowser = func(url string) error {
 	var cmd *exec.Cmd
 	switch runtime.GOOS {
 	case "darwin":
