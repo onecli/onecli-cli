@@ -143,7 +143,7 @@ func (f *fakeAPI) defaults(route string) http.HandlerFunc {
 				writeAgentJSON(w, 200, map[string]any{"data": []any{map[string]any{"id": "itm_1", "kind": "app", "name": "GitHub", "service": "github", "hosts": []string{"api.github.com"}, "allows": []string{"read"}, "needsApproval": false, "state": "working", "example": nil}}, "nextCursor": next})
 				return
 			}
-			writeAgentJSON(w, 200, map[string]any{"data": []any{map[string]any{"id": "itm_2", "kind": "secret", "name": "Key", "service": nil, "hosts": []string{"api.example.com"}, "allows": []string{}, "needsApproval": true, "state": "working", "example": nil}}, "nextCursor": nil})
+			writeAgentJSON(w, 200, map[string]any{"data": []any{map[string]any{"id": "itm_2", "kind": "api_key", "name": "Key", "service": nil, "hosts": []string{"api.example.com"}, "allows": []string{}, "needsApproval": true, "state": "working", "example": nil}}, "nextCursor": nil})
 		})
 	case "POST /v2/agents/me/check":
 		return agentBearerOnly(func(w http.ResponseWriter, _ *http.Request) {
