@@ -46,8 +46,9 @@ func (c *Client) BaseURL() string { return c.baseURL }
 func newHTTPClient() *http.Client {
 	tr := http.DefaultTransport.(*http.Transport).Clone()
 	tr.Proxy = nil
-	// A shell that read agent.env holds SSL_CERT_FILE at the gateway's
-	// certificate alone. Add it to the system roots rather than replace them.
+	// A shell that read agent.env holds SSL_CERT_FILE at the CA bundle, and
+	// an older setup may point it at the gateway's certificate alone. Add
+	// what it holds to the system roots rather than replace them.
 	if f := os.Getenv("SSL_CERT_FILE"); f != "" {
 		if data, err := os.ReadFile(f); err == nil {
 			pool, perr := x509.SystemCertPool()
