@@ -26,6 +26,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -70,11 +71,35 @@ type sandboxProbe struct {
 // a reason that has nothing to do with our deny rule — a false pass.
 // TestProbeNotVacuous is what exposed this.
 func canSendAppleEvents() (bool, string) {
-	out, err := exec.Command("/usr/bin/osascript", "-e",
+	// Asked from inside a sandbox that denies nothing: TCC can grant the
+	// calling app and still refuse the same call once it runs under
+	// sandbox-exec, with "privilege violation" (-10004).
+	profile, err := os.CreateTemp("", "onecli-permissive-*.sb")
+	if err != nil {
+		return true, ""
+	}
+	defer os.Remove(profile.Name())
+	_, _ = profile.WriteString("(version 1)\n(allow default)\n")
+	_ = profile.Close()
+	out, err := exec.Command(sandbox.LauncherPath(), "-f", profile.Name(), "/usr/bin/osascript", "-e",
 		`tell application "System Events" to get name of every process`).CombinedOutput()
-	if err != nil && strings.Contains(string(out), "Not authorized") {
+	if err != nil && (strings.Contains(string(out), "Not authorized") || strings.Contains(string(out), "(-10004)")) {
 		return false, "Apple Events are TCC-denied on this host (the OS already blocks this vector)"
 	}
+	return true, ""
+}
+
+// dirWritable reports whether this user can create a file in dir outside
+// the sandbox. Where it cannot (a root-owned /usr/local/bin, a missing
+// folder), the plant probe has nothing to detect.
+func dirWritable(dir string) (bool, string) {
+	f, err := os.CreateTemp(dir, ".onecli-audit-*")
+	if err != nil {
+		return false, fmt.Sprintf("%s is not writable by this user even without a sandbox", dir)
+	}
+	name := f.Name()
+	_ = f.Close()
+	_ = os.Remove(name)
 	return true, ""
 }
 
@@ -290,7 +315,8 @@ func deferredEgressProbes(home string) []sandboxProbe {
 	plant := func(name, why, path string) sandboxProbe {
 		return sandboxProbe{
 			name: name, why: why, want: mustBlock,
-			argv: []string{"/bin/bash", "-c", fmt.Sprintf("printf '' >> %q", path)},
+			argv:         []string{"/bin/bash", "-c", fmt.Sprintf("printf '' >> %q", path)},
+			precondition: func() (bool, string) { return dirWritable(filepath.Dir(path)) },
 		}
 	}
 	return []sandboxProbe{
