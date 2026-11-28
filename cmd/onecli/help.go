@@ -45,7 +45,8 @@ func (cmd *HelpCmd) Run(out *output.Writer) error {
 			}},
 			{Name: "connect <connect-token>", Description: "Connect this agent to a vault with a connect token. Writes agent.env.", Args: []ArgInfo{
 				{Name: "<connect-token>", Description: "The vault's connect token (oc_connect_...), or - to read it from standard input."},
-				{Name: "--credential", Description: "Write agent.env for an agent credential you already hold, with no trade."},
+				{Name: "--credential -", Description: "Write agent.env for an agent credential you already hold, read from standard input, with no trade. A value given on the command line still works but is deprecated: it shows in ps and shell history."},
+				{Name: "--from-env", Description: "Like --credential, with the credential taken from ONECLI_AGENT_CREDENTIAL."},
 				{Name: "--name", Description: "The agent's name."},
 				{Name: "--replace", Description: "Move an agent on another vault to this one."},
 				{Name: "--no-profile", Description: "Do not add the line that reads agent.env to your shell profile."},
