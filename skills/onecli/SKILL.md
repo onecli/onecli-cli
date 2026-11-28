@@ -31,11 +31,11 @@ On Windows these stop with "Connecting an agent on Windows is not supported yet.
 
 ## Invariants
 
-1. **Always authenticate first** — run `onecli auth login` before any other command
-2. **Always `list` before acting** — get IDs from list commands, then pass explicit IDs
-3. **Use `--fields` on list commands** — request only the fields you need
-4. **Use `--dry-run` before mutating** — preview changes before applying them
-5. **Check exit codes** — 0 = success, 1 = error, 2 = auth required, 3 = not found, 4 = conflict, 5 = forbidden (do not retry)
+1. **Always authenticate first**: run `onecli auth login` before any other command. The agent commands above (`connect`, `status`, `items`, `check`, `exec` and the rest) use the agent's own credential instead
+2. **Always `list` before acting**: get IDs from list commands, then pass explicit IDs
+3. **Use `--fields` on list commands**: request only the fields you need
+4. **Use `--dry-run` before mutating**: preview changes before applying them
+5. **Check exit codes**: 0 = success, 1 = error, 2 = auth required, 3 = not found, 4 = conflict, 5 = forbidden (do not retry). `onecli exec` and `onecli run` exit with the command's own code
 
 ## Common Workflows
 

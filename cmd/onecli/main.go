@@ -104,16 +104,12 @@ func main() {
 
 // handleError maps errors to appropriate exit codes and structured output.
 func handleError(out *output.Writer, err error) {
-	if exit, ok := writeActionError(out, err); ok {
+	if exit, ok := writeAgentError(out, err); ok {
 		os.Exit(exit)
 	}
 	var childExit *exitStatus
 	if errors.As(err, &childExit) {
 		os.Exit(childExit.code)
-	}
-	var agentErr *agentError
-	if errors.As(err, &agentErr) {
-		os.Exit(writeAgentError(out, agentErr))
 	}
 	var apiErr *api.APIError
 	if errors.As(err, &apiErr) {

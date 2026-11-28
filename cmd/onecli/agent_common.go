@@ -15,8 +15,9 @@ import (
 	"github.com/onecli/onecli-cli/pkg/output"
 )
 
-// agentError is an error from an agent command, with its own string code,
-// exit code and next step. handleError writes it as it is.
+// agentError is a command error that carries its own string code, exit
+// code and next step, for when the generic status mapping in handleError
+// would give the wrong one. handleError writes it as it is.
 type agentError struct {
 	code   string
 	exit   int
@@ -67,14 +68,19 @@ func agentFail(err error) error {
 	return &agentError{code: exitcode.CodeError, exit: exitcode.Error, msg: e.Message}
 }
 
-// writeAgentError writes an agentError to stderr and returns its exit code.
-func writeAgentError(out *output.Writer, e *agentError) int {
+// writeAgentError writes err to stderr when it is an agentError and
+// returns its exit code. ok is false for any other error.
+func writeAgentError(out *output.Writer, err error) (exit int, ok bool) {
+	var e *agentError
+	if !errors.As(err, &e) {
+		return 0, false
+	}
 	if e.action != "" {
 		_ = out.ErrorWithAction(e.code, e.msg, e.action)
 	} else {
 		_ = out.Error(e.code, e.msg)
 	}
-	return e.exit
+	return e.exit, true
 }
 
 // newAgentAPI makes the /v2 client for the resolved API host.

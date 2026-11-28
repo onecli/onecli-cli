@@ -37,7 +37,7 @@ type keysClient interface {
 func goneError(err error) error {
 	var apiErr *api.APIError
 	if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusGone {
-		return &actionError{
+		return &agentError{
 			code:   exitcode.CodeGone,
 			msg:    apiErr.Message,
 			action: makeKeyAction,
@@ -135,7 +135,7 @@ func regenerate(ctx context.Context, client keysClient, revoke string) (any, err
 		if api.IsStatus(err, http.StatusNotFound) {
 			// No such key of the caller's, or no /v2/keys at all.
 			if _, listErr := client.ListKeys(ctx); errors.Is(listErr, api.ErrKeysUnsupported) {
-				return nil, &actionError{
+				return nil, &agentError{
 					code:   exitcode.CodeError,
 					msg:    "this server has no /v2/keys, so a key cannot be revoked by id",
 					action: "run `onecli auth regenerate-api-key` without --revoke: on this server it replaces your key and the old one stops working",
@@ -160,7 +160,7 @@ func regenerate(ctx context.Context, client keysClient, revoke string) (any, err
 	if err != nil {
 		return nil, err
 	}
-	return nil, &actionError{
+	return nil, &agentError{
 		code:   exitcode.CodeForbidden,
 		msg:    "this server makes a key only for a signed-in person, never for a key, so the CLI cannot make one",
 		action: makeKeyAction + ". " + revokeHint,

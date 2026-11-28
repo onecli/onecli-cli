@@ -64,7 +64,7 @@ func (b *browserLogin) run(ctx context.Context) (string, error) {
 			}
 			return p.APIKey, nil
 		case "expired":
-			return "", &actionError{
+			return "", &agentError{
 				code:   exitcode.CodeAuthRequired,
 				msg:    "the sign-in link expired or was already used",
 				action: "run `onecli auth login --browser` again",
@@ -75,7 +75,7 @@ func (b *browserLogin) run(ctx context.Context) (string, error) {
 			return "", fmt.Errorf("unexpected sign-in status %q", p.Status)
 		}
 		if !time.Now().Before(deadline) {
-			return "", &actionError{
+			return "", &agentError{
 				code:   exitcode.CodeAuthRequired,
 				msg:    "timed out waiting for the browser sign-in",
 				action: "run `onecli auth login --browser` again and confirm in the browser",
