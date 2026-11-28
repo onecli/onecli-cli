@@ -1,6 +1,7 @@
 package agentenv
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,6 +16,7 @@ func good() Settings {
 		Scheme:     "http",
 		Address:    "gateway.example.com:10255",
 		CAFile:     "/tmp/onecli/gateway-ca.pem",
+		BundleFile: "/tmp/onecli/ca-bundle.pem",
 	}
 }
 
@@ -77,7 +79,8 @@ func TestWriteIsMode0600AndRoundTrips(t *testing.T) {
 		"HTTPS_PROXY":             "http://x:oc_agent_abc_DEF123@gateway.example.com:10255",
 		"http_proxy":              "http://x:oc_agent_abc_DEF123@gateway.example.com:10255",
 		"NO_PROXY":                "localhost,127.0.0.1",
-		"SSL_CERT_FILE":           "/tmp/onecli/gateway-ca.pem",
+		"SSL_CERT_FILE":           "/tmp/onecli/ca-bundle.pem",
+		"NODE_EXTRA_CA_CERTS":     "/tmp/onecli/gateway-ca.pem",
 		"NODE_USE_ENV_PROXY":      "1",
 	}
 	for k, v := range want {
@@ -327,5 +330,88 @@ func TestPrivateDir(t *testing.T) {
 		if PrivateDir(dir) {
 			t.Fatalf("mode %04o counted as private", mode)
 		}
+	}
+}
+
+const (
+	rootPEM = "-----BEGIN CERTIFICATE-----\nUk9PVA==\n-----END CERTIFICATE-----\n"
+	mitmPEM = "-----BEGIN CERTIFICATE-----\nTUlUTQ==\n-----END CERTIFICATE-----\n"
+)
+
+func withRoots(t *testing.T, paths ...string) {
+	t.Helper()
+	orig := SystemCAPaths
+	SystemCAPaths = paths
+	t.Cleanup(func() { SystemCAPaths = orig })
+}
+
+func TestPairsPointReplacingClientsAtTheBundle(t *testing.T) {
+	s := good()
+	got := map[string]string{}
+	for _, kv := range s.Pairs() {
+		got[kv[0]] = kv[1]
+	}
+	for _, k := range []string{"SSL_CERT_FILE", "CURL_CA_BUNDLE", "REQUESTS_CA_BUNDLE", "GIT_SSL_CAINFO", "PGSSLROOTCERT"} {
+		if got[k] != s.BundleFile {
+			t.Errorf("%s = %q, want the bundle %q", k, got[k], s.BundleFile)
+		}
+	}
+	if got["NODE_EXTRA_CA_CERTS"] != s.CAFile {
+		t.Errorf("NODE_EXTRA_CA_CERTS = %q, want the gateway certificate alone", got["NODE_EXTRA_CA_CERTS"])
+	}
+}
+
+func TestCheckRefusesAnUnsafeBundlePath(t *testing.T) {
+	for _, p := range []string{"", "/tmp/a b", "/tmp/a'b"} {
+		s := good()
+		s.BundleFile = p
+		if s.Check() == nil {
+			t.Fatalf("Check accepted bundle path %q", p)
+		}
+	}
+}
+
+func TestWriteCABundleHoldsTheRootsAndTheGatewayCertificate(t *testing.T) {
+	roots := filepath.Join(t.TempDir(), "roots.pem")
+	if err := os.WriteFile(roots, []byte(rootPEM), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// A missing path and a file with no certificate are skipped.
+	empty := filepath.Join(t.TempDir(), "empty.pem")
+	if err := os.WriteFile(empty, []byte("not a cert\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	withRoots(t, "/no/such/file", empty, roots)
+	dir := filepath.Join(t.TempDir(), "onecli")
+	path, err := WriteCABundle(dir, mitmPEM)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if path != filepath.Join(dir, CABundleFileName) {
+		t.Fatalf("path = %s", path)
+	}
+	data, _ := os.ReadFile(path)
+	if string(data) != rootPEM+mitmPEM {
+		t.Fatalf("bundle = %q, want roots then the gateway certificate", data)
+	}
+	if st, _ := os.Stat(dir); st.Mode().Perm() != 0o700 {
+		t.Fatalf("dir mode = %v", st.Mode())
+	}
+}
+
+func TestWriteCABundleFailsLoudWithNoSystemRoots(t *testing.T) {
+	withRoots(t, "/no/such/file")
+	dir := filepath.Join(t.TempDir(), "onecli")
+	if _, err := WriteCABundle(dir, mitmPEM); !errors.Is(err, ErrNoSystemRoots) {
+		t.Fatalf("err = %v, want ErrNoSystemRoots", err)
+	}
+	if _, err := os.Lstat(filepath.Join(dir, CABundleFileName)); !os.IsNotExist(err) {
+		t.Fatal("a bundle with the gateway certificate alone was written")
+	}
+}
+
+func TestWriteCABundleRefusesANonCertificate(t *testing.T) {
+	if _, err := WriteCABundle(t.TempDir(), "hello"); err == nil {
+		t.Fatal("wrote a bundle from a non-certificate")
 	}
 }
