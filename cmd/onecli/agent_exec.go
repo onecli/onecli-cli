@@ -167,6 +167,9 @@ func stripKey(env []string, key string) []string {
 }
 
 func (c *ExecCmd) Run(out *output.Writer) error {
+	if err := checkPlatform(); err != nil {
+		return err
+	}
 	args := c.Args
 	if len(args) > 0 && args[0] == "--" {
 		args = args[1:]
