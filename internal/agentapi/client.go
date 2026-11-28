@@ -366,6 +366,9 @@ type Check struct {
 	Item     *IDRef  `json:"item,omitempty"`
 	Rule     *RuleOf `json:"rule,omitempty"`
 	Reason   string  `json:"reason"`
+	// Code is the error code the real call would be refused with, when a
+	// usage limit refuses it (for example limit_used_up).
+	Code *string `json:"code,omitempty"`
 }
 
 // IDRef names a thing by id.

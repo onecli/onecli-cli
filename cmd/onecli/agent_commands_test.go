@@ -143,7 +143,7 @@ func (f *fakeAPI) defaults(route string) http.HandlerFunc {
 				writeAgentJSON(w, 200, map[string]any{"data": []any{map[string]any{"id": "itm_1", "kind": "app", "name": "GitHub", "service": "github", "hosts": []string{"api.github.com"}, "allows": []string{"read"}, "needsApproval": false, "state": "working", "example": nil}}, "nextCursor": next})
 				return
 			}
-			writeAgentJSON(w, 200, map[string]any{"data": []any{map[string]any{"id": "itm_2", "kind": "secret", "name": "Key", "service": nil, "hosts": []string{"api.example.com"}, "allows": []string{}, "needsApproval": true, "state": "working", "example": nil}}, "nextCursor": nil})
+			writeAgentJSON(w, 200, map[string]any{"data": []any{map[string]any{"id": "itm_2", "kind": "api_key", "name": "Key", "service": nil, "hosts": []string{"api.example.com"}, "allows": []string{}, "needsApproval": true, "state": "working", "example": nil}}, "nextCursor": nil})
 		})
 	case "POST /v2/agents/me/check":
 		return agentBearerOnly(func(w http.ResponseWriter, _ *http.Request) {
@@ -516,9 +516,14 @@ func TestCheck(t *testing.T) {
 		handler           http.HandlerFunc
 		decision          string
 		code              string
+		refusal           string
 		noCall            bool
 	}{
 		{name: "allowed", method: "get", url: "https://api.github.com/user", decision: "allowed"},
+		{name: "refused by a usage limit keeps the code", method: "GET", url: "https://api.github.com/user",
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				writeAgentJSON(w, 200, map[string]any{"decision": "blocked", "reason": "The monthly limit is used up.", "code": "limit_used_up"})
+			}, decision: "blocked", refusal: "limit_used_up"},
 		{name: "bad method", method: "G E T", url: "https://x.com", code: exitcode.CodeValidation, noCall: true},
 		{name: "long method", method: strings.Repeat("A", 17), url: "https://x.com", code: exitcode.CodeValidation, noCall: true},
 		{name: "bad url", method: "GET", url: "ftp://x.com", code: exitcode.CodeValidation, noCall: true},
@@ -551,8 +556,12 @@ func TestCheck(t *testing.T) {
 				t.Fatal(err)
 			}
 			if tc.decision != "" {
-				if res := decodeOut(t, stdout); res["decision"] != tc.decision {
+				res := decodeOut(t, stdout)
+				if res["decision"] != tc.decision {
 					t.Fatalf("result = %v", res)
+				}
+				if got, _ := res["code"].(string); got != tc.refusal {
+					t.Fatalf("code = %q, want %q", got, tc.refusal)
 				}
 			}
 			calls := f.callsTo("POST /v2/agents/me/check")
