@@ -60,7 +60,9 @@ func newWithPrefix(baseURL, apiKey, prefix string) *Client {
 
 func buildHTTPClient() *http.Client {
 	// Every call names this client (OneCLI-Client), on whichever transport.
-	client := &http.Client{Timeout: 30 * time.Second, Transport: clientid.Wrap(nil)}
+	tr := http.DefaultTransport.(*http.Transport).Clone()
+	tr.Proxy = apiProxy
+	client := &http.Client{Timeout: 30 * time.Second, Transport: clientid.Wrap(tr)}
 	f := os.Getenv("SSL_CERT_FILE")
 	if f == "" {
 		return client
@@ -74,10 +76,45 @@ func buildHTTPClient() *http.Client {
 		pool = x509.NewCertPool()
 	}
 	pool.AppendCertsFromPEM(data)
-	client.Transport = clientid.Wrap(&http.Transport{
-		TLSClientConfig: &tls.Config{RootCAs: pool},
-	})
+	tr.TLSClientConfig = &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}
 	return client
+}
+
+// envProxy is the environment's proxy choice. Go reads the environment
+// once per process, so tests replace this to vary it.
+var envProxy = http.ProxyFromEnvironment
+
+// apiProxy is the proxy for calls to the OneCLI API: the one the
+// environment names (a corporate proxy keeps working), except the OneCLI
+// gateway. A shell that read agent.env, or a command run by `onecli run`,
+// has HTTPS_PROXY at the gateway with an agent credential inside; the
+// person's API key must never ride through it. Such a proxy is skipped and
+// the call goes straight to the API, whichever transport is in use.
+func apiProxy(req *http.Request) (*url.URL, error) {
+	u, err := envProxy(req)
+	if err != nil || u == nil {
+		return u, err
+	}
+	if isGatewayProxy(u) {
+		return nil, nil
+	}
+	return u, nil
+}
+
+// isGatewayProxy reports whether a proxy URL carries a OneCLI agent
+// credential (oc_agent_..., or aoc_... from older setups) as its user or
+// password, which is how the gateway's proxy URL is built.
+func isGatewayProxy(u *url.URL) bool {
+	if u.User == nil {
+		return false
+	}
+	pass, _ := u.User.Password()
+	for _, s := range []string{u.User.Username(), pass} {
+		if strings.HasPrefix(s, "oc_agent_") || strings.HasPrefix(s, "aoc_") {
+			return true
+		}
+	}
+	return false
 }
 
 // withProjectQuery appends a projectId query param to path when projectID is non-empty.
