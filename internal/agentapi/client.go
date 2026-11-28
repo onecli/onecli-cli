@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -473,4 +474,23 @@ func (c *Client) AppOrigin(ctx context.Context) (string, error) {
 		return "", errors.New("the server did not name a plain dashboard address")
 	}
 	return origin, nil
+}
+
+// PlainHTTPWarning is a one-line warning when baseURL is plain http to a
+// host other than loopback, or "" when it is not. The gateway's
+// certificate is fetched from the API with no credential, so on such a
+// host anyone on the path can hand back a certificate of their own.
+func PlainHTTPWarning(baseURL string) string {
+	u, err := url.Parse(baseURL)
+	if err != nil || u.Scheme != "http" {
+		return ""
+	}
+	host := u.Hostname()
+	if host == "localhost" {
+		return ""
+	}
+	if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
+		return ""
+	}
+	return "onecli: warning: " + baseURL + " is plain http, so the gateway certificate fetched from it can be swapped on the way. Use https."
 }
