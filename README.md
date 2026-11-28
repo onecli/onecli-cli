@@ -138,11 +138,23 @@ onecli org settings get|set                            Organization settings
 
 ```
 onecli auth login [--api-key oc_...]                   Store API key
+onecli auth login --browser                            Sign in in a browser; the server makes a key for this terminal
 onecli auth logout                                     Remove stored API key
 onecli auth status                                     Check current auth state
+onecli auth api-key                                    List your API keys (never their values)
+onecli auth regenerate-api-key --revoke <id>           Revoke one of your keys
 ```
 
 Authentication is only required when the server enforces it. In local mode, commands work without logging in.
+
+#### Upgrading to 3.0
+
+Against a OneCLI 3.0 server, two commands change:
+
+- `onecli auth api-key` lists your keys from `/v2/keys` as `{"keys": [...]}` and never shows a key's value. It no longer prints `{"apiKey": "..."}`.
+- `onecli auth regenerate-api-key` with no flag refuses, because a 3.0 server makes keys only for a signed-in person. Use `onecli auth login --browser` for a new key, and `--revoke <id>` to cut one off.
+
+Against a server before 3.0, both commands behave as in 2.x.
 
 ### Run
 
