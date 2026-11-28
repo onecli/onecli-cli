@@ -116,10 +116,12 @@ func detectRuntime() string {
 	return "linux"
 }
 
-// writeCA writes the gateway's certificate next to agent.env, mode 0644.
+// writeCA writes the gateway's certificate next to agent.env, mode 0644,
+// in a dir only this user can write (the same rule agent.env follows):
+// commands run through the gateway trust this file.
 func writeCA(dir string, pem []byte) (string, error) {
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return "", fmt.Errorf("creating %s: %w", dir, err)
+	if err := agentenv.EnsurePrivateDir(dir); err != nil {
+		return "", err
 	}
 	path := filepath.Join(dir, agentenv.CAFileName)
 	if err := agentenv.WriteFileFresh(path, pem, 0o644); err != nil {

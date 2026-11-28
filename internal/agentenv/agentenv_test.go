@@ -308,3 +308,24 @@ func TestRemoveProfileLineReplacesALinkAndKeepsTheMode(t *testing.T) {
 		t.Fatalf("line not removed: %q", data)
 	}
 }
+
+func TestPrivateDir(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "d")
+	if PrivateDir(dir) {
+		t.Fatal("a missing dir counted as private")
+	}
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if !PrivateDir(dir) {
+		t.Fatal("a 0700 dir did not count as private")
+	}
+	for _, mode := range []os.FileMode{0o720, 0o702, 0o777} {
+		if err := os.Chmod(dir, mode); err != nil {
+			t.Fatal(err)
+		}
+		if PrivateDir(dir) {
+			t.Fatalf("mode %04o counted as private", mode)
+		}
+	}
+}

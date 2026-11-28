@@ -66,11 +66,15 @@ func agentSettings(client *agentapi.Client) (agentenv.Settings, string, error) {
 	return s, dir, nil
 }
 
-// gatewayPEM reads the gateway's certificate next to agent.env, or fetches it.
+// gatewayPEM reads the gateway's certificate next to agent.env, or fetches
+// it. A file in a dir that group or others can write is not trusted: it
+// may have been planted, and every command run here would trust it.
 func gatewayPEM(client *agentapi.Client, dir string) ([]byte, error) {
-	if data, err := os.ReadFile(filepath.Join(dir, agentenv.CAFileName)); err == nil &&
-		bytes.Contains(data, []byte("-----BEGIN CERTIFICATE-----")) {
-		return data, nil
+	if agentenv.PrivateDir(dir) {
+		if data, err := os.ReadFile(filepath.Join(dir, agentenv.CAFileName)); err == nil &&
+			bytes.Contains(data, []byte("-----BEGIN CERTIFICATE-----")) {
+			return data, nil
+		}
 	}
 	return client.CA(newContext())
 }
