@@ -26,7 +26,8 @@ var stdin io.Reader = os.Stdin
 // trade, in Go. The token is sent once and never written to disk.
 type ConnectCmd struct {
 	Token      string `arg:"" optional:"" name:"connect-token" help:"The vault's connect token (oc_connect_...). Use - to read it from standard input."`
-	Credential string `optional:"" name:"credential" help:"Write agent.env for an agent credential you already hold (oc_agent_...), with no trade."`
+	Credential string `optional:"" name:"credential" help:"Write agent.env for an agent credential you already hold, with no trade. Use - to read it from standard input. A value given here shows in ps and shell history: deprecated."`
+	FromEnv    bool   `optional:"" name:"from-env" help:"Like --credential, with the credential taken from ONECLI_AGENT_CREDENTIAL."`
 	Name       string `optional:"" name:"name" help:"The agent's name. Unset: the server picks one."`
 	Replace    bool   `optional:"" name:"replace" help:"This place holds an agent on another vault: disconnect it and connect here."`
 	NoProfile  bool   `optional:"" name:"no-profile" help:"Do not add the line that reads agent.env to your shell profile."`
@@ -57,18 +58,61 @@ func checkAgentName(name string) error {
 	return nil
 }
 
+// credentialArgvNote is the deprecation note for a credential on the
+// command line, where ps and shell history show it.
+const credentialArgvNote = "onecli: warning: a credential given on the command line shows in ps and your shell history, " +
+	"and this form will be removed. Use: --credential - (reads standard input), or --from-env with ONECLI_AGENT_CREDENTIAL set."
+
+// readLine reads one trimmed line from stdin.
+func readLine(what string) (string, error) {
+	line, err := bufio.NewReader(stdin).ReadString('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		return "", fmt.Errorf("reading the %s: %w", what, err)
+	}
+	return strings.TrimSpace(line), nil
+}
+
+// resolveCredential turns --credential and --from-env into the credential
+// itself: "-" reads standard input, --from-env reads the environment, and a
+// value on the command line still works with a deprecation note.
+func (c *ConnectCmd) resolveCredential(out *output.Writer, tokenFromStdin bool) (string, error) {
+	switch {
+	case c.FromEnv && c.Credential != "":
+		return "", validationErr("give --credential or --from-env, not both")
+	case c.FromEnv:
+		v := os.Getenv(agentenv.CredentialVar)
+		if v == "" {
+			return "", validationErr("--from-env: ONECLI_AGENT_CREDENTIAL is not set")
+		}
+		return v, nil
+	case c.Credential == "-":
+		if tokenFromStdin {
+			return "", validationErr("only one value can come from standard input")
+		}
+		return readLine("agent credential")
+	case c.Credential != "":
+		out.Stderr(credentialArgvNote)
+		return c.Credential, nil
+	}
+	return "", nil
+}
+
 func (c *ConnectCmd) Run(out *output.Writer) error {
 	token := c.Token
 	if token == "-" {
-		line, err := bufio.NewReader(stdin).ReadString('\n')
-		if err != nil && !errors.Is(err, io.EOF) {
-			return fmt.Errorf("reading the connect token: %w", err)
+		var err error
+		if token, err = readLine("connect token"); err != nil {
+			return err
 		}
-		token = strings.TrimSpace(line)
 	}
-	if token != "" && c.Credential != "" {
+	if token != "" && (c.Credential != "" || c.FromEnv) {
 		return validationErr("give a connect token or --credential, not both")
 	}
+	cred, err := c.resolveCredential(out, c.Token == "-")
+	if err != nil {
+		return err
+	}
+	c.Credential = cred
 	if token == "" && c.Credential == "" {
 		return &agentError{code: exitcode.CodeError, exit: exitcode.Error,
 			msg:    "a connect token is needed",

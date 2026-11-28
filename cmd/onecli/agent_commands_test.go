@@ -1137,3 +1137,71 @@ func TestConnectWithNoSystemRootsFailsBeforeTheTrade(t *testing.T) {
 		}
 	}
 }
+
+// ---- the credential's input ----
+
+func credentialWritten(t *testing.T, dir string) {
+	t.Helper()
+	vals, _ := agentenv.Read(filepath.Join(dir, agentenv.FileName))
+	if vals[agentenv.CredentialVar] != testCred {
+		t.Fatalf("agent.env = %v", vals)
+	}
+}
+
+func TestConnectCredentialInputs(t *testing.T) {
+	t.Run("stdin", func(t *testing.T) {
+		_, dir := agentEnv(t)
+		newFakeAPI(t)
+		orig := stdin
+		stdin = strings.NewReader(testCred + "\n")
+		t.Cleanup(func() { stdin = orig })
+		out, _, stderr := newOut()
+		if err := (&ConnectCmd{Credential: "-", NoProfile: true}).Run(out); err != nil {
+			t.Fatal(err)
+		}
+		credentialWritten(t, dir)
+		if strings.Contains(stderr.String(), "warning") {
+			t.Fatal("stdin input got the deprecation note")
+		}
+	})
+	t.Run("from_env", func(t *testing.T) {
+		_, dir := agentEnv(t)
+		t.Setenv(agentenv.CredentialVar, testCred)
+		newFakeAPI(t)
+		out, _, stderr := newOut()
+		if err := (&ConnectCmd{FromEnv: true, NoProfile: true}).Run(out); err != nil {
+			t.Fatal(err)
+		}
+		credentialWritten(t, dir)
+		if strings.Contains(stderr.String(), "warning") {
+			t.Fatal("env input got the deprecation note")
+		}
+	})
+	// Control: the old form keeps working, with the note, and the note never
+	// holds the credential.
+	t.Run("argv_still_works_with_a_note", func(t *testing.T) {
+		_, dir := agentEnv(t)
+		newFakeAPI(t)
+		out, _, stderr := newOut()
+		if err := (&ConnectCmd{Credential: testCred, NoProfile: true}).Run(out); err != nil {
+			t.Fatal(err)
+		}
+		credentialWritten(t, dir)
+		if !strings.Contains(stderr.String(), "--credential -") {
+			t.Fatalf("no deprecation note: %q", stderr.String())
+		}
+		if strings.Contains(stderr.String(), testCred) {
+			t.Fatal("the note printed the credential")
+		}
+	})
+	t.Run("refusals", func(t *testing.T) {
+		agentEnv(t)
+		newFakeAPI(t)
+		out, _, _ := newOut()
+		wantAgentErr(t, (&ConnectCmd{FromEnv: true}).Run(out), exitcode.CodeValidation, exitcode.Error)
+		wantAgentErr(t, (&ConnectCmd{FromEnv: true, Credential: "-"}).Run(out), exitcode.CodeValidation, exitcode.Error)
+		wantAgentErr(t, (&ConnectCmd{Token: "-", Credential: "-"}).Run(out), exitcode.CodeValidation, exitcode.Error)
+		t.Setenv(agentenv.CredentialVar, testCred)
+		wantAgentErr(t, (&ConnectCmd{Token: testToken, FromEnv: true}).Run(out), exitcode.CodeValidation, exitcode.Error)
+	})
+}
