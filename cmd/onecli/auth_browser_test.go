@@ -56,7 +56,7 @@ func TestBrowserLogin(t *testing.T) {
 		openErr   error
 		timeout   time.Duration
 		wantKey   string
-		wantCode  string // actionError code
+		wantCode  string // agentError code
 		wantErr   string // plain error substring
 		wantPolls int
 		wantNote  string
@@ -100,7 +100,7 @@ func TestBrowserLogin(t *testing.T) {
 			key, err := b.run(context.Background())
 			switch {
 			case tt.wantCode != "":
-				wantActionError(t, err, tt.wantCode, exitcode.AuthRequired, "auth login --browser")
+				wantErrAction(t, err, tt.wantCode, exitcode.AuthRequired, "auth login --browser")
 			case tt.wantErr != "":
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("err = %v, want %q", err, tt.wantErr)

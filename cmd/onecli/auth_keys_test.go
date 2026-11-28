@@ -100,11 +100,11 @@ func toJSON(t *testing.T, v any) string {
 	return strings.TrimSpace(buf.String())
 }
 
-func wantActionError(t *testing.T, err error, code string, exit int, actionHas string) *actionError {
+func wantErrAction(t *testing.T, err error, code string, exit int, actionHas string) *agentError {
 	t.Helper()
-	var ae *actionError
+	var ae *agentError
 	if !errors.As(err, &ae) {
-		t.Fatalf("want actionError, got %T %v", err, err)
+		t.Fatalf("want agentError, got %T %v", err, err)
 	}
 	if ae.code != code || ae.exit != exit || !strings.Contains(ae.action, actionHas) {
 		t.Fatalf("got code=%s exit=%d action=%q", ae.code, ae.exit, ae.action)
@@ -148,7 +148,7 @@ func TestShowKeys(t *testing.T) {
 			defer srv.Close()
 			v, err := showKeys(context.Background(), api.New(srv.URL, "oc_test"))
 			if tt.wantCode != "" {
-				ae := wantActionError(t, err, tt.wantCode, exitcode.Error, "Settings > API keys")
+				ae := wantErrAction(t, err, tt.wantCode, exitcode.Error, "Settings > API keys")
 				if ae.msg != goneText {
 					t.Errorf("msg = %q, want the server's text", ae.msg)
 				}
@@ -226,7 +226,7 @@ func TestRegenerate(t *testing.T) {
 			v, err := regenerate(context.Background(), api.New(srv.URL, "oc_test"), tt.revoke)
 			switch {
 			case tt.wantCode != "":
-				ae := wantActionError(t, err, tt.wantCode, tt.wantExit, "")
+				ae := wantErrAction(t, err, tt.wantCode, tt.wantExit, "")
 				if !strings.Contains(ae.msg+" "+ae.action, tt.wantHas) {
 					t.Errorf("error %q / %q lacks %q", ae.msg, ae.action, tt.wantHas)
 				}
@@ -274,7 +274,7 @@ func TestRegenerateDryRun(t *testing.T) {
 	}
 }
 
-func TestWriteActionError(t *testing.T) {
+func TestWriteAgentError(t *testing.T) {
 	tests := []struct {
 		name     string
 		err      error
@@ -282,16 +282,16 @@ func TestWriteActionError(t *testing.T) {
 		wantExit int
 		wantErr  string
 	}{
-		{name: "action error with action", err: fmt.Errorf("wrapped: %w", &actionError{code: exitcode.CodeGone, msg: "gone", action: "do x", exit: exitcode.Error}),
+		{name: "action error with action", err: fmt.Errorf("wrapped: %w", &agentError{code: exitcode.CodeGone, msg: "gone", action: "do x", exit: exitcode.Error}),
 			wantOK: true, wantExit: exitcode.Error, wantErr: `{"error":"gone","code":"GONE","action":"do x"}`},
-		{name: "action error without action", err: &actionError{code: exitcode.CodeForbidden, msg: "no", exit: exitcode.Forbidden},
+		{name: "action error without action", err: &agentError{code: exitcode.CodeForbidden, msg: "no", exit: exitcode.Forbidden},
 			wantOK: true, wantExit: exitcode.Forbidden, wantErr: `{"error":"no","code":"FORBIDDEN"}`},
 		{name: "plain error is left to handleError", err: errors.New("x")},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
-			exit, ok := writeActionError(output.NewWithWriters(&stdout, &stderr), tt.err)
+			exit, ok := writeAgentError(output.NewWithWriters(&stdout, &stderr), tt.err)
 			if ok != tt.wantOK || exit != tt.wantExit {
 				t.Fatalf("ok=%v exit=%d", ok, exit)
 			}
