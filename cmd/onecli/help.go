@@ -39,6 +39,49 @@ func (cmd *HelpCmd) Run(out *output.Writer) error {
 		Version:     version,
 		Description: "CLI for managing OneCLI agents, secrets, rules, projects, and configuration.",
 		Commands: []CommandInfo{
+			{Name: "status", Description: "Show whether this agent is connected, and to which vault.", Args: []ArgInfo{
+				{Name: "--fields", Description: "Comma-separated fields to include."},
+				{Name: "--quiet", Description: "Output only the specified field."},
+			}},
+			{Name: "connect <connect-token>", Description: "Connect this agent to a vault with a connect token. Writes agent.env.", Args: []ArgInfo{
+				{Name: "<connect-token>", Description: "The vault's connect token (oc_connect_...), or - to read it from standard input."},
+				{Name: "--credential -", Description: "Write agent.env for an agent credential you already hold, read from standard input, with no trade. A value given on the command line still works but is deprecated: it shows in ps and shell history."},
+				{Name: "--from-env", Description: "Like --credential, with the credential taken from ONECLI_AGENT_CREDENTIAL."},
+				{Name: "--name", Description: "The agent's name."},
+				{Name: "--replace", Description: "Move an agent on another vault to this one."},
+				{Name: "--no-profile", Description: "Do not add the line that reads agent.env to your shell profile."},
+				{Name: "--dry-run", Description: "Show what would be sent and written."},
+			}},
+			{Name: "signup", Description: "Ask your person to connect this agent: prints a link and a code, then waits.", Args: []ArgInfo{
+				{Name: "--name", Description: "The agent's name."},
+				{Name: "--timeout", Description: "Stop waiting after this long (default 15m)."},
+				{Name: "--no-profile", Description: "Do not add the line that reads agent.env to your shell profile."},
+				{Name: "--dry-run", Description: "Show what would be sent."},
+			}},
+			{Name: "attach <agent>", Description: "Put the OneCLI skill and proxy settings into this agent's own config.", Args: []ArgInfo{
+				{Name: "<agent>", Description: "claude, cursor, codex, hermes, opencode or openclaw. Unset: every one found."},
+				{Name: "--dry-run", Description: "Show what would be written."},
+			}},
+			{Name: "disconnect", Description: "Remove this agent and delete agent.env.", Args: []ArgInfo{
+				{Name: "--local-only", Description: "Only delete agent.env; do not ask the server to remove the agent."},
+				{Name: "--dry-run", Description: "Show what would be removed."},
+			}},
+			{Name: "items", Description: "List what this agent can use: its vault's items, never a value.", Args: []ArgInfo{
+				{Name: "--fields", Description: "Comma-separated fields to include."},
+				{Name: "--quiet", Description: "Output only the specified field, one per line."},
+			}},
+			{Name: "check <method> <url>", Description: "Ask what would happen to one call, without sending it.", Args: []ArgInfo{
+				{Name: "<method>", Required: true, Description: "The HTTP method, for example GET."},
+				{Name: "<url>", Required: true, Description: "The full http or https address."},
+			}},
+			{Name: "request <service>", Description: "Ask your person to add an item this agent lacks. Prints a link for them.", Args: []ArgInfo{
+				{Name: "<service>", Required: true, Description: "For example github or api.example.com."},
+			}},
+			{Name: "exec <command>", Description: "Run one command with the proxy and the OneCLI certificate set for it only.", Args: []ArgInfo{
+				{Name: "<command>", Required: true, Description: "The command and its arguments, after --."},
+				{Name: "--no-ca", Description: "Do not set the OneCLI certificate."},
+				{Name: "--dry-run", Description: "Show the command and the variables it would get."},
+			}},
 			{Name: "run", Description: "Run a command with OneCLI gateway access.", Args: []ArgInfo{
 				{Name: "<command>", Required: true, Description: "Command to execute (e.g. claude, cursor, codex)."},
 				{Name: "--project, -p", Description: "Project slug."},
@@ -442,14 +485,19 @@ func (cmd *HelpCmd) Run(out *output.Writer) error {
 			}},
 			{Name: "vaults list", Description: "List external vault connections (e.g. 1Password)."},
 			{Name: "counts", Description: "Show the project's resource counts."},
-			{Name: "auth login", Description: "Store API key for authentication."},
+			{Name: "auth login", Description: "Store an API key, or sign in with --browser.", Args: []ArgInfo{
+				{Name: "--browser", Description: "Sign in in a browser; the server makes a key for this terminal and hands it over once."},
+				{Name: "--no-open", Description: "With --browser: print the link only."},
+				{Name: "--timeout", Description: "With --browser: how long to wait (default 5m)."},
+				{Name: "--api-key", Description: "API key to store (oc_... format)."},
+			}},
 			{Name: "auth logout", Description: "Remove stored API key."},
 			{Name: "auth status", Description: "Show authentication status."},
 			{Name: "auth update", Description: "Update your profile (display name).", Args: []ArgInfo{
 				{Name: "--name", Required: true, Description: "New display name."},
 			}},
-			{Name: "auth api-key", Description: "Show your current API key."},
-			{Name: "auth regenerate-api-key", Description: "Regenerate your API key."},
+			{Name: "auth api-key", Description: "List your API keys (never their values)."},
+			{Name: "auth regenerate-api-key", Description: "Revoke a key with --revoke <id>; servers before 3.0: replace your key."},
 			{Name: "config get <key>", Description: "Get a config value. Keys: api-host, project, agent."},
 			{Name: "config set <key> <value>", Description: "Set a config value. Keys: api-host, project, agent."},
 			{Name: "sandbox audit", Description: "Red-team the enforce-mode sandbox: attempt every known egress bypass and report which the OS actually stops. Exits non-zero if any hole is found.", Args: []ArgInfo{

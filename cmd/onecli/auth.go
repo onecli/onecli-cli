@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
-	"github.com/onecli/onecli-cli/internal/api"
 	"github.com/onecli/onecli-cli/internal/auth"
 	"github.com/onecli/onecli-cli/internal/config"
 	"github.com/onecli/onecli-cli/pkg/output"
@@ -21,8 +21,8 @@ type AuthCmd struct {
 	Logout           AuthLogoutCmd           `cmd:"" help:"Remove stored API key."`
 	Status           AuthStatusCmd           `cmd:"" help:"Show authentication status."`
 	Update           AuthUpdateCmd           `cmd:"" help:"Update your profile (display name)."`
-	ApiKey           AuthApiKeyCmd           `cmd:"api-key" help:"Show your current API key."`
-	RegenerateApiKey AuthRegenerateApiKeyCmd `cmd:"regenerate-api-key" help:"Regenerate your API key."`
+	ApiKey           AuthApiKeyCmd           `cmd:"api-key" help:"List your API keys (never their values)."`
+	RegenerateApiKey AuthRegenerateApiKeyCmd `cmd:"regenerate-api-key" help:"Revoke a key with --revoke <id>. Servers before 3.0: replace your key."`
 }
 
 // AuthUpdateCmd is `onecli auth update`.
@@ -51,7 +51,10 @@ func (c *AuthUpdateCmd) Run(out *output.Writer) error {
 
 // AuthLoginCmd is `onecli auth login`.
 type AuthLoginCmd struct {
-	APIKey string `optional:"" name:"api-key" help:"API key to store (oc_... format)."`
+	APIKey  string        `optional:"" name:"api-key" help:"API key to store (oc_... format)."`
+	Browser bool          `optional:"" help:"Sign in in a browser; the server makes a key for this terminal and hands it over once."`
+	NoOpen  bool          `optional:"" name:"no-open" help:"With --browser: print the link only, do not open a browser."`
+	Timeout time.Duration `optional:"" default:"5m" help:"With --browser: how long to wait for the sign-in."`
 }
 
 // AuthLoginResponse is the JSON output of a successful login.
@@ -62,6 +65,18 @@ type AuthLoginResponse struct {
 }
 
 func (c *AuthLoginCmd) Run(out *output.Writer) error {
+	if c.Browser {
+		if c.APIKey != "" {
+			return errors.New("use --browser or --api-key, not both")
+		}
+		if c.Timeout <= 0 {
+			return errors.New("--timeout must be positive")
+		}
+		return c.loginWithBrowser(out)
+	}
+	if c.NoOpen {
+		return errors.New("--no-open needs --browser")
+	}
 	apiKey := c.APIKey
 
 	// If no key provided, read from stdin.
@@ -82,32 +97,7 @@ func (c *AuthLoginCmd) Run(out *output.Writer) error {
 		return err
 	}
 
-	// Verify the key by calling the API.
-	client := api.New(config.APIHost(), apiKey)
-	user, err := client.GetUser(newContext())
-	if err != nil {
-		var apiErr *api.APIError
-		if errors.As(err, &apiErr) && apiErr.StatusCode == 401 {
-			return errors.New("invalid API key: the server rejected this key")
-		}
-		return fmt.Errorf("could not verify API key: %w", err)
-	}
-
-	// Store the key.
-	credDir, err := config.CredentialsDir()
-	if err != nil {
-		return err
-	}
-	store := auth.NewStore(nil, credDir)
-	if err := store.Save(apiKey); err != nil {
-		return err
-	}
-
-	return out.Write(AuthLoginResponse{
-		Status: "ok",
-		Email:  user.Email,
-		Name:   user.Name,
-	})
+	return storeVerifiedKey(out, config.APIHost(), apiKey)
 }
 
 // AuthLogoutCmd is `onecli auth logout`.
@@ -162,41 +152,4 @@ func (c *AuthStatusCmd) Run(out *output.Writer) error {
 		Email:         user.Email,
 		Name:          user.Name,
 	})
-}
-
-// AuthApiKeyCmd is `onecli auth api-key`.
-type AuthApiKeyCmd struct {
-	Fields string `optional:"" help:"Comma-separated list of fields to include in output."`
-}
-
-func (c *AuthApiKeyCmd) Run(out *output.Writer) error {
-	client, err := newClient()
-	if err != nil {
-		return err
-	}
-	resp, err := client.GetAPIKey(newContext())
-	if err != nil {
-		return err
-	}
-	return out.WriteFiltered(resp, c.Fields)
-}
-
-// AuthRegenerateApiKeyCmd is `onecli auth regenerate-api-key`.
-type AuthRegenerateApiKeyCmd struct {
-	DryRun bool `optional:"" name:"dry-run" help:"Validate the request without executing it."`
-}
-
-func (c *AuthRegenerateApiKeyCmd) Run(out *output.Writer) error {
-	if c.DryRun {
-		return out.WriteDryRun("Would regenerate API key", nil)
-	}
-	client, err := newClient()
-	if err != nil {
-		return err
-	}
-	resp, err := client.RegenerateAPIKey(newContext())
-	if err != nil {
-		return err
-	}
-	return out.Write(resp)
 }

@@ -12,10 +12,14 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/onecli/onecli-cli/internal/agentenv"
+	"github.com/onecli/onecli-cli/internal/clientid"
 )
 
 // Client is the HTTP client for the OneCLI API.
@@ -57,7 +61,10 @@ func newWithPrefix(baseURL, apiKey, prefix string) *Client {
 }
 
 func buildHTTPClient() *http.Client {
-	client := &http.Client{Timeout: 30 * time.Second}
+	// Every call names this client (OneCLI-Client), on whichever transport.
+	tr := http.DefaultTransport.(*http.Transport).Clone()
+	tr.Proxy = apiProxy
+	client := &http.Client{Timeout: 30 * time.Second, Transport: clientid.Wrap(tr)}
 	f := os.Getenv("SSL_CERT_FILE")
 	if f == "" {
 		return client
@@ -71,10 +78,66 @@ func buildHTTPClient() *http.Client {
 		pool = x509.NewCertPool()
 	}
 	pool.AppendCertsFromPEM(data)
-	client.Transport = &http.Transport{
-		TLSClientConfig: &tls.Config{RootCAs: pool},
-	}
+	tr.TLSClientConfig = &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}
 	return client
+}
+
+// envProxy is the environment's proxy choice. Go reads the environment
+// once per process, so tests replace this to vary it.
+var envProxy = http.ProxyFromEnvironment
+
+// apiProxy is the proxy for calls to the OneCLI API: the one the
+// environment names (a corporate proxy keeps working), except the OneCLI
+// gateway. A shell that read agent.env, or a command run by `onecli run`,
+// has HTTPS_PROXY at the gateway with an agent credential inside; the
+// person's API key must never ride through it. Such a proxy is skipped and
+// the call goes straight to the API, whichever transport is in use.
+func apiProxy(req *http.Request) (*url.URL, error) {
+	u, err := envProxy(req)
+	if err != nil || u == nil {
+		return u, err
+	}
+	if isGatewayProxy(u) || (u.Host != "" && u.Host == gatewayAddress()) {
+		return nil, nil
+	}
+	return u, nil
+}
+
+// gatewayAddress is the gateway's host:port as this place's agent.env
+// names it, or "" with none. Read on each call (agent.env can change under
+// a long-running command); it is one small local file. Matching by address
+// as well as by credential shape keeps the gateway skipped even if the
+// credential's format changes.
+var gatewayAddress = func() string {
+	dir, err := agentenv.Dir()
+	if err != nil {
+		return ""
+	}
+	vals, err := agentenv.Read(filepath.Join(dir, agentenv.FileName))
+	if err != nil {
+		return ""
+	}
+	u, err := url.Parse(vals["HTTPS_PROXY"])
+	if err != nil {
+		return ""
+	}
+	return u.Host
+}
+
+// isGatewayProxy reports whether a proxy URL carries a OneCLI agent
+// credential (oc_agent_..., or aoc_... from older setups) as its user or
+// password, which is how the gateway's proxy URL is built.
+func isGatewayProxy(u *url.URL) bool {
+	if u.User == nil {
+		return false
+	}
+	pass, _ := u.User.Password()
+	for _, s := range []string{u.User.Username(), pass} {
+		if strings.HasPrefix(s, "oc_agent_") || strings.HasPrefix(s, "aoc_") {
+			return true
+		}
+	}
+	return false
 }
 
 // withProjectQuery appends a projectId query param to path when projectID is non-empty.

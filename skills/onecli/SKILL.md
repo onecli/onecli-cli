@@ -3,20 +3,39 @@
 ## Quick Start
 
 ```bash
-# Authenticate first
+# Authenticate first: sign in in a browser (recommended)
+onecli auth login --browser
+# or store a key you already have
 onecli auth login --api-key oc_...
 
 # Verify authentication
 onecli auth status
 ```
 
+### Connecting an agent (3.0 servers)
+
+On the agent's own machine, with no API key:
+
+```bash
+onecli connect oc_connect_...   # token from the vault's page; or `onecli signup` to ask your person
+onecli status                   # connected, and to which vault
+onecli items                    # what this agent can use (never a value)
+onecli check GET https://api.github.com/user   # what would happen to a call
+onecli exec -- curl https://api.github.com/user
+onecli request github           # ask your person for an item you lack
+onecli attach claude            # put the skill and proxy settings into the agent's config
+onecli disconnect
+```
+
+On Windows these stop with "Connecting an agent on Windows is not supported yet. Use WSL."
+
 ## Invariants
 
-1. **Always authenticate first** — run `onecli auth login` before any other command
-2. **Always `list` before acting** — get IDs from list commands, then pass explicit IDs
-3. **Use `--fields` on list commands** — request only the fields you need
-4. **Use `--dry-run` before mutating** — preview changes before applying them
-5. **Check exit codes** — 0 = success, 1 = error, 2 = auth required, 3 = not found, 4 = conflict, 5 = forbidden (do not retry)
+1. **Always authenticate first**: run `onecli auth login` before any other command. The agent commands above (`connect`, `status`, `items`, `check`, `exec` and the rest) use the agent's own credential instead
+2. **Always `list` before acting**: get IDs from list commands, then pass explicit IDs
+3. **Use `--fields` on list commands**: request only the fields you need
+4. **Use `--dry-run` before mutating**: preview changes before applying them
+5. **Check exit codes**: 0 = success, 1 = error, 2 = auth required, 3 = not found, 4 = conflict, 5 = forbidden (do not retry). `onecli exec` and `onecli run` exit with the command's own code
 
 ## Common Workflows
 
@@ -138,12 +157,21 @@ onecli agents grants list --id <agent-id>   # attach intent
 onecli agents credentials --id <agent-id>   # effective (org guardrails applied)
 ```
 
-### View and regenerate API key
+### List and revoke API keys
 
 ```bash
-onecli auth api-key
-onecli auth regenerate-api-key
+onecli auth api-key                              # your keys (never their values)
+onecli auth regenerate-api-key --revoke <id>     # cut off a key, e.g. a leaked one
 ```
+
+To get a new key, run `onecli auth login --browser`: the server makes a key
+for this terminal and lands it on your default workspace, so every command
+works. A key made under Settings > API keys names no workspace: after
+`onecli auth login --api-key <key>`, also run
+`onecli config set project <workspace>`, and note that `onecli run` refuses
+such a key. On servers before 3.0,
+`onecli auth api-key` prints the stored key and `onecli auth regenerate-api-key`
+replaces it.
 
 ## Output Format
 

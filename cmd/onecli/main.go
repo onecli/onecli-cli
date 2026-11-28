@@ -10,6 +10,7 @@ import (
 	"github.com/alecthomas/kong"
 	"github.com/onecli/onecli-cli/internal/api"
 	"github.com/onecli/onecli-cli/internal/auth"
+	"github.com/onecli/onecli-cli/internal/clientid"
 	"github.com/onecli/onecli-cli/internal/config"
 	"github.com/onecli/onecli-cli/pkg/exitcode"
 	"github.com/onecli/onecli-cli/pkg/output"
@@ -37,10 +38,22 @@ type CLI struct {
 	Config   ConfigCmd   `cmd:"" help:"Manage configuration settings."`
 	Sandbox  SandboxCmd  `cmd:"" help:"Inspect and audit the enforce-mode sandbox."`
 	Migrate  MigrateCmd  `cmd:"" help:"Migrate data to OneCLI Cloud."`
+
+	// The agent's own commands: connect to one vault, then use it.
+	Status     StatusCmd     `cmd:"" help:"Show whether this agent is connected, and to which vault."`
+	Connect    ConnectCmd    `cmd:"" help:"Connect this agent to a vault with a connect token. Writes agent.env."`
+	Signup     SignupCmd     `cmd:"" help:"Ask your person to connect this agent: prints a link and a code, then waits."`
+	Attach     AttachCmd     `cmd:"" help:"Put the OneCLI skill and proxy settings into this agent's own config."`
+	Disconnect DisconnectCmd `cmd:"" help:"Remove this agent and delete agent.env."`
+	Items      ItemsCmd      `cmd:"" help:"List what this agent can use: its vault's items, never a value."`
+	Check      CheckCmd      `cmd:"" help:"Ask what would happen to one call, without sending it."`
+	Request    RequestCmd    `cmd:"" help:"Ask your person to add an item this agent lacks. Prints a link for them."`
+	Exec       ExecCmd       `cmd:"" help:"Run one command with the proxy and the OneCLI certificate set for it only."`
 }
 
 func main() {
 	out := output.New()
+	clientid.SetVersion(version)
 
 	// Hidden sidecar mode: the enforce-mode auth forwarder forked by
 	// `onecli run --enforce` re-invokes this binary. Handled before kong
@@ -91,6 +104,13 @@ func main() {
 
 // handleError maps errors to appropriate exit codes and structured output.
 func handleError(out *output.Writer, err error) {
+	if exit, ok := writeAgentError(out, err); ok {
+		os.Exit(exit)
+	}
+	var childExit *exitStatus
+	if errors.As(err, &childExit) {
+		os.Exit(childExit.code)
+	}
 	var apiErr *api.APIError
 	if errors.As(err, &apiErr) {
 		// A 400/401 demanding a project header is a scoping problem, not an

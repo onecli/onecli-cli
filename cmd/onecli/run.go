@@ -17,6 +17,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/onecli/onecli-cli/internal/agentenv"
 	"github.com/onecli/onecli-cli/internal/api"
 	"github.com/onecli/onecli-cli/internal/config"
 	"github.com/onecli/onecli-cli/pkg/output"
@@ -51,6 +52,9 @@ type RunCmd struct {
 }
 
 func (c *RunCmd) Run(out *output.Writer) error {
+	if err := checkPlatform(); err != nil {
+		return err
+	}
 	if len(c.Args) == 0 {
 		return fmt.Errorf("no command specified: use 'onecli run -- <command> [args...]'")
 	}
@@ -69,12 +73,14 @@ func (c *RunCmd) Run(out *output.Writer) error {
 		return fmt.Errorf("command not found: %s — is it installed and in your PATH?", c.Args[0])
 	}
 
-	// Fetch gateway configuration from the API.
+	// Gateway configuration: from this agent's own credential (agent.env or
+	// ONECLI_AGENT_CREDENTIAL) when it has one and no --agent is named,
+	// else from GET /v1/container-config, as for an older setup.
 	client, err := newClient()
 	if err != nil {
 		return err
 	}
-	cfg, err := client.GetContainerConfig(newContext(), agent)
+	cfg, fromAgentEnv, err := runConfig(client, c.Agent, agent)
 	if err != nil {
 		return err
 	}
@@ -118,10 +124,16 @@ func (c *RunCmd) Run(out *output.Writer) error {
 		if !c.NoCA && cfg.CACertificate != "" {
 			injected = append(injected, caTrustKeys...)
 		}
+		source := "container-config"
+		if fromAgentEnv {
+			source = "agent-credential"
+		}
+		slices.Sort(injected)
 		return out.WriteDryRun("Would exec command with OneCLI gateway", map[string]any{
 			"binary":       binary,
 			"args":         c.Args,
 			"env_injected": injected,
+			"config":       source,
 		})
 	}
 
@@ -165,18 +177,10 @@ func (c *RunCmd) Run(out *output.Writer) error {
 		}
 	}
 
-	// Build child environment.
-	env := buildChildEnv(os.Environ(), cfg.Env, caPath)
-
+	// Build child environment, with the same code exec uses. It also mutes
+	// Node's one-time EnvHttpProxyAgent warning when NODE_USE_ENV_PROXY is set.
+	env := childEnv(cfg, caPath, fromAgentEnv)
 	env = append(env, "ONECLI_GATEWAY=true")
-
-	// When the gateway routes Node's own egress via NODE_USE_ENV_PROXY, Node
-	// prints a one-time "[UNDICI-EHPA] EnvHttpProxyAgent is experimental"
-	// warning to stderr on startup — the mechanism announcing itself, not an
-	// error. Mute just that warning code (Node 22+ --disable-warning) so
-	// gateway plumbing doesn't leak noise into the agent's output. Scoped to
-	// the flag's presence so we never alter Node behavior otherwise.
-	env = suppressUndiciProxyWarning(env)
 
 	// For known agents, fetch the agent-specific skill variant and install
 	// to the agent's skill directory. Also optionally register a hook.
@@ -285,55 +289,21 @@ func (c *RunCmd) Run(out *output.Writer) error {
 	return nil
 }
 
-// writeGatewayCACert writes a combined CA bundle (system CAs + gateway CA)
-// to ~/.onecli/ca-bundle.pem. Env vars like SSL_CERT_FILE REPLACE the
-// default trust store, so the bundle must include system root certificates
-// alongside the gateway CA.
+// writeGatewayCACert writes the combined CA bundle (system roots + gateway
+// CA) to ~/.onecli/ca-bundle.pem, through agentenv.WriteCABundle, the one
+// writer of the bundle. Env vars like SSL_CERT_FILE REPLACE the default
+// trust store, so the bundle must hold the system roots too. With no
+// system roots found it fails and writes nothing.
 func writeGatewayCACert(gatewayPEM string) (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("resolving home dir: %w", err)
 	}
-	caPath := filepath.Join(home, ".onecli", "ca-bundle.pem")
-	if err := os.MkdirAll(filepath.Dir(caPath), 0o700); err != nil {
-		return "", fmt.Errorf("creating CA dir: %w", err)
-	}
-
-	var buf bytes.Buffer
-	if systemCAs, err := readSystemCAs(); err == nil {
-		buf.Write(systemCAs)
-		if len(systemCAs) > 0 && systemCAs[len(systemCAs)-1] != '\n' {
-			buf.WriteByte('\n')
-		}
-	}
-	buf.WriteString(gatewayPEM)
-
-	combined := buf.Bytes()
-	existing, err := os.ReadFile(caPath)
-	if err == nil && bytes.Equal(existing, combined) {
-		return caPath, nil
-	}
-	if err := os.WriteFile(caPath, combined, 0o600); err != nil {
+	path, err := agentenv.WriteCABundle(filepath.Join(home, ".onecli"), gatewayPEM)
+	if err != nil {
 		return "", fmt.Errorf("writing CA bundle: %w", err)
 	}
-	return caPath, nil
-}
-
-var systemCAPaths = []string{
-	"/etc/ssl/cert.pem",                  // macOS
-	"/etc/ssl/certs/ca-certificates.crt", // Debian/Ubuntu
-	"/etc/pki/tls/certs/ca-bundle.crt",   // RHEL/Fedora/CentOS
-	"/etc/ssl/ca-bundle.pem",             // SUSE
-}
-
-func readSystemCAs() ([]byte, error) {
-	for _, p := range systemCAPaths {
-		data, err := os.ReadFile(p)
-		if err == nil && len(data) > 0 {
-			return data, nil
-		}
-	}
-	return nil, fmt.Errorf("no system CA bundle found")
+	return path, nil
 }
 
 // caTrustKeys are env vars we inject locally for CA trust. These aren't in
@@ -783,7 +753,7 @@ func upsertGatewayProxyURL(content, proxyURL string) (string, proxyURLStatus) {
 		if m[2] == proxyURL {
 			return content, proxyURLCurrent
 		}
-		if !strings.Contains(m[2], "aoc_") {
+		if !strings.Contains(m[2], "aoc_") && !strings.Contains(m[2], agentenv.CredentialPrefix) {
 			return content, proxyURLForeign
 		}
 		lines[i] = m[1] + `"` + proxyURL + `"`
