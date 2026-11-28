@@ -1027,3 +1027,52 @@ func TestExecRefusals(t *testing.T) {
 		}
 	})
 }
+
+// ---- the gateway certificate's folder ----
+
+func TestConnectRefusesASharedDirBeforeWritingTheCertificate(t *testing.T) {
+	_, dir := agentEnv(t)
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(dir, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	f := newFakeAPI(t)
+	out, _, _ := newOut()
+	err := (&ConnectCmd{Token: testToken, NoProfile: true}).Run(out)
+	if err == nil || !strings.Contains(err.Error(), "writable by group or others") {
+		t.Fatalf("err = %v, want a refusal of the shared dir", err)
+	}
+	if _, err := os.Lstat(filepath.Join(dir, agentenv.CAFileName)); !os.IsNotExist(err) {
+		t.Fatal("the gateway certificate was written into a shared dir")
+	}
+	if n := len(f.callsTo("POST /v2/agents")); n != 0 {
+		t.Fatalf("the connect token was traded %d times", n)
+	}
+}
+
+func TestGatewayPEMIgnoresACertificateInASharedDir(t *testing.T) {
+	_, dir := agentEnv(t)
+	newFakeAPI(t)
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	planted := "-----BEGIN CERTIFICATE-----\nplanted\n-----END CERTIFICATE-----\n"
+	if err := os.WriteFile(filepath.Join(dir, agentenv.CAFileName), []byte(planted), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Private dir: the file next to agent.env is used.
+	got, err := gatewayPEM(newAgentAPI(), dir)
+	if err != nil || string(got) != planted {
+		t.Fatalf("private dir: got %q, %v; want the local file", got, err)
+	}
+	// Shared dir: the file may be planted, so the server's is fetched.
+	if err := os.Chmod(dir, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	got, err = gatewayPEM(newAgentAPI(), dir)
+	if err != nil || string(got) != testPEM {
+		t.Fatalf("shared dir: got %q, %v; want the server's certificate", got, err)
+	}
+}

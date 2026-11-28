@@ -189,7 +189,7 @@ func Write(dir string, s Settings) (string, error) {
 	if err := s.Check(); err != nil {
 		return "", err
 	}
-	if err := ensurePrivateDir(dir); err != nil {
+	if err := EnsurePrivateDir(dir); err != nil {
 		return "", err
 	}
 	path := filepath.Join(dir, FileName)
@@ -199,9 +199,11 @@ func Write(dir string, s Settings) (string, error) {
 	return path, nil
 }
 
-// ensurePrivateDir makes dir 0700 if missing, and refuses an existing dir
-// (or a link to one) that group or others can write.
-func ensurePrivateDir(dir string) error {
+// EnsurePrivateDir makes dir 0700 if missing, and refuses an existing dir
+// (or a link to one) that group or others can write. Everything kept next
+// to agent.env (the gateway certificate too) goes through it: anyone who
+// can write the dir could swap those files for their own.
+func EnsurePrivateDir(dir string) error {
 	st, err := os.Stat(dir)
 	if errors.Is(err, os.ErrNotExist) {
 		if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -223,6 +225,13 @@ func ensurePrivateDir(dir string) error {
 		return fmt.Errorf("%s is writable by group or others (mode %04o): run chmod go-w %s, or pick another directory", dir, st.Mode().Perm(), dir)
 	}
 	return nil
+}
+
+// PrivateDir reports whether dir exists and group and others cannot write
+// it. A file read from a dir that fails this may have been planted.
+func PrivateDir(dir string) bool {
+	st, err := os.Stat(dir)
+	return err == nil && st.IsDir() && st.Mode().Perm()&0o022 == 0
 }
 
 // Read parses agent.env. Only lines of the form export NAME='value' count.
