@@ -12,11 +12,13 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
 
+	"github.com/onecli/onecli-cli/internal/agentenv"
 	"github.com/onecli/onecli-cli/internal/clientid"
 )
 
@@ -95,10 +97,31 @@ func apiProxy(req *http.Request) (*url.URL, error) {
 	if err != nil || u == nil {
 		return u, err
 	}
-	if isGatewayProxy(u) {
+	if isGatewayProxy(u) || (u.Host != "" && u.Host == gatewayAddress()) {
 		return nil, nil
 	}
 	return u, nil
+}
+
+// gatewayAddress is the gateway's host:port as this place's agent.env
+// names it, or "" with none. Read on each call (agent.env can change under
+// a long-running command); it is one small local file. Matching by address
+// as well as by credential shape keeps the gateway skipped even if the
+// credential's format changes.
+var gatewayAddress = func() string {
+	dir, err := agentenv.Dir()
+	if err != nil {
+		return ""
+	}
+	vals, err := agentenv.Read(filepath.Join(dir, agentenv.FileName))
+	if err != nil {
+		return ""
+	}
+	u, err := url.Parse(vals["HTTPS_PROXY"])
+	if err != nil {
+		return ""
+	}
+	return u.Host
 }
 
 // isGatewayProxy reports whether a proxy URL carries a OneCLI agent

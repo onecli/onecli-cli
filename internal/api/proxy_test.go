@@ -85,3 +85,51 @@ func TestAPIClientSkipsTheGatewayProxyOnly(t *testing.T) {
 		}
 	}
 }
+
+// A proxy at the agent.env gateway address is skipped even when its user
+// info has no credential shape the CLI knows; any other address is kept.
+func TestAPIProxySkipsTheGatewayByAddress(t *testing.T) {
+	origEnv, origAddr := envProxy, gatewayAddress
+	t.Cleanup(func() { envProxy, gatewayAddress = origEnv, origAddr })
+	gatewayAddress = func() string { return "gw.example.com:443" }
+	req, _ := http.NewRequest(http.MethodGet, "https://api.example.com/v2/keys", nil)
+	cases := map[string]bool{ // proxy URL -> want skipped
+		"https://x:newformat_abc@gw.example.com:443": true,
+		"https://gw.example.com:443":                 true,
+		"http://corp-proxy:3128":                     false,
+		"https://gw.example.com:8443":                false,
+	}
+	for raw, skip := range cases {
+		pu, _ := url.Parse(raw)
+		envProxy = func(*http.Request) (*url.URL, error) { return pu, nil }
+		got, err := apiProxy(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if skip != (got == nil) {
+			t.Errorf("%s: proxy = %v, want skipped=%v", raw, got, skip)
+		}
+	}
+	// No agent.env: nothing is skipped by address.
+	gatewayAddress = func() string { return "" }
+	pu, _ := url.Parse("http://corp-proxy:3128")
+	envProxy = func(*http.Request) (*url.URL, error) { return pu, nil }
+	if got, _ := apiProxy(req); got == nil {
+		t.Error("with no agent.env, a plain proxy was dropped")
+	}
+}
+
+// gatewayAddress reads the address from agent.env in ONECLI_HOME.
+func TestGatewayAddressReadsAgentEnv(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "onecli")
+	t.Setenv("ONECLI_HOME", dir)
+	if got := gatewayAddress(); got != "" {
+		t.Fatalf("no agent.env: got %q", got)
+	}
+	_ = os.MkdirAll(dir, 0o700)
+	_ = os.WriteFile(filepath.Join(dir, "agent.env"),
+		[]byte("export HTTPS_PROXY='https://x:oc_agent_abc@gw.example.com:443'\n"), 0o600)
+	if got := gatewayAddress(); got != "gw.example.com:443" {
+		t.Fatalf("got %q", got)
+	}
+}
