@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -1213,7 +1214,7 @@ func TestFetchCAWarnsOnPlainHTTPOnly(t *testing.T) {
 	t.Cleanup(func() { warnLine = orig })
 
 	f := newFakeAPI(t)
-	if _, err := fetchCA(agentapi.New(f.srv.URL)); err != nil {
+	if _, err := fetchCA(context.Background(), agentapi.New(f.srv.URL)); err != nil {
 		t.Fatal(err)
 	}
 	if len(warned) != 0 {
@@ -1221,7 +1222,7 @@ func TestFetchCAWarnsOnPlainHTTPOnly(t *testing.T) {
 	}
 	// A plain http host that is not loopback warns once, before any call.
 	// The fetch itself fails (the host does not exist); only the warning counts.
-	_, _ = fetchCA(agentapi.New("http://onecli.invalid"))
+	_, _ = fetchCA(context.Background(), agentapi.New("http://onecli.invalid"))
 	if len(warned) != 1 || !strings.Contains(warned[0], "plain http") {
 		t.Fatalf("warned = %v", warned)
 	}

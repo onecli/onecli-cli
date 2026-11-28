@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -80,7 +81,7 @@ func gatewayPEM(client *agentapi.Client, dir string) ([]byte, error) {
 			return data, nil
 		}
 	}
-	return fetchCA(client)
+	return fetchCA(newContext(), client)
 }
 
 // warnLine writes one warning line to stderr; tests replace it.
@@ -88,11 +89,11 @@ var warnLine = func(msg string) { fmt.Fprintln(os.Stderr, msg) }
 
 // fetchCA fetches the gateway's certificate, warning first when the API
 // is plain http to a host other than loopback.
-func fetchCA(client *agentapi.Client) ([]byte, error) {
+func fetchCA(ctx context.Context, client *agentapi.Client) ([]byte, error) {
 	if w := agentapi.PlainHTTPWarning(client.BaseURL()); w != "" {
 		warnLine(w)
 	}
-	return client.CA(newContext())
+	return client.CA(ctx)
 }
 
 // agentRunConfig builds the gateway configuration from this agent's own

@@ -152,7 +152,7 @@ func (c *ConnectCmd) Run(out *output.Writer) error {
 
 	ctx := newContext()
 	// The certificate first: with none, nothing is made.
-	pem, err := fetchCA(client)
+	pem, err := fetchCA(ctx, client)
 	if err != nil {
 		return fmt.Errorf("could not fetch the gateway's certificate from %s: %w", client.BaseURL(), err)
 	}
@@ -269,7 +269,7 @@ func (c *SignupCmd) Run(out *output.Writer) error {
 				action: "run 'onecli disconnect' first to connect it somewhere else"}
 		}
 	}
-	pem, err := fetchCA(client)
+	pem, err := fetchCA(ctx, client)
 	if err != nil {
 		return fmt.Errorf("could not fetch the gateway's certificate from %s: %w", client.BaseURL(), err)
 	}
