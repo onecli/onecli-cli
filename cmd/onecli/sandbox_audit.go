@@ -26,6 +26,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -70,11 +71,62 @@ type sandboxProbe struct {
 // a reason that has nothing to do with our deny rule — a false pass.
 // TestProbeNotVacuous is what exposed this.
 func canSendAppleEvents() (bool, string) {
-	out, err := exec.Command("/usr/bin/osascript", "-e",
+	// Asked from inside a sandbox that denies nothing: TCC can grant the
+	// calling app and still refuse the same call once it runs under
+	// sandbox-exec, with "privilege violation" (-10004).
+	profile, err := os.CreateTemp("", "onecli-permissive-*.sb")
+	if err != nil {
+		return true, ""
+	}
+	defer os.Remove(profile.Name())
+	_, _ = profile.WriteString("(version 1)\n(allow default)\n")
+	_ = profile.Close()
+	out, err := exec.Command(sandbox.LauncherPath(), "-f", profile.Name(), "/usr/bin/osascript", "-e",
 		`tell application "System Events" to get name of every process`).CombinedOutput()
-	if err != nil && strings.Contains(string(out), "Not authorized") {
+	if err != nil && (strings.Contains(string(out), "Not authorized") || strings.Contains(string(out), "(-10004)")) {
 		return false, "Apple Events are TCC-denied on this host (the OS already blocks this vector)"
 	}
+	return true, ""
+}
+
+// makeInertApp writes an app bundle whose program exits at once with no
+// window or Dock icon, and returns its path, or "" when it cannot. The
+// launchservices-open probe opens it instead of a URL, so a missing deny
+// launches nothing anyone sees. Written outside the sandbox, so a write
+// the profile refuses cannot pass for a blocked open.
+func makeInertApp() string {
+	base, err := os.UserCacheDir()
+	if err != nil {
+		return ""
+	}
+	app := filepath.Join(base, "onecli", "OnecliAuditNoop.app")
+	plist := `<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+<key>CFBundleExecutable</key><string>noop</string>
+<key>CFBundleIdentifier</key><string>sh.onecli.audit-noop</string>
+<key>CFBundlePackageType</key><string>APPL</string>
+<key>LSUIElement</key><true/>
+</dict></plist>
+`
+	if os.MkdirAll(filepath.Join(app, "Contents", "MacOS"), 0o700) != nil ||
+		os.WriteFile(filepath.Join(app, "Contents", "Info.plist"), []byte(plist), 0o600) != nil ||
+		os.WriteFile(filepath.Join(app, "Contents", "MacOS", "noop"), []byte("#!/bin/sh\nexit 0\n"), 0o700) != nil {
+		return ""
+	}
+	return app
+}
+
+// dirWritable reports whether this user can create a file in dir outside
+// the sandbox. Where it cannot (a root-owned /usr/local/bin, a missing
+// folder), the plant probe has nothing to detect.
+func dirWritable(dir string) (bool, string) {
+	f, err := os.CreateTemp(dir, ".onecli-audit-*")
+	if err != nil {
+		return false, fmt.Sprintf("%s is not writable by this user even without a sandbox", dir)
+	}
+	name := f.Name()
+	_ = f.Close()
+	_ = os.Remove(name)
 	return true, ""
 }
 
@@ -146,6 +198,7 @@ func sandboxProbes() []sandboxProbe {
 
 // sandboxProbesFor builds the matrix against a known forwarder port.
 func sandboxProbesFor(forwarderPort uint16, lanRelayURL string) []sandboxProbe {
+	inertApp := makeInertApp()
 	direct := []sandboxProbe{
 		{
 			name: "direct-dial",
@@ -215,10 +268,16 @@ func sandboxProbesFor(forwarderPort uint16, lanRelayURL string) []sandboxProbe {
 					"s.settimeout(5);s.sendto(b'x',('8.8.8.8',53))"},
 		},
 		{
+			// The target is an app bundle whose program exits at once, so a
+			// missing deny launches nothing anyone sees. A real URL here
+			// opened a browser tab on every test run.
 			name: "launchservices-open",
 			why:  "`open URL` launches a browser OUTSIDE the sandbox — fetch-and-exfil",
 			want: mustBlock,
-			argv: []string{"/usr/bin/open", "https://example.com"},
+			precondition: func() (bool, string) {
+				return inertApp != "", "could not write the inert app bundle to open"
+			},
+			argv: []string{"/usr/bin/open", "-n", "-g", inertApp},
 		},
 		{
 			// Uses System Events rather than Safari: driving Safari trips
@@ -290,7 +349,8 @@ func deferredEgressProbes(home string) []sandboxProbe {
 	plant := func(name, why, path string) sandboxProbe {
 		return sandboxProbe{
 			name: name, why: why, want: mustBlock,
-			argv: []string{"/bin/bash", "-c", fmt.Sprintf("printf '' >> %q", path)},
+			argv:         []string{"/bin/bash", "-c", fmt.Sprintf("printf '' >> %q", path)},
+			precondition: func() (bool, string) { return dirWritable(filepath.Dir(path)) },
 		}
 	}
 	return []sandboxProbe{

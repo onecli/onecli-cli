@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -46,8 +47,9 @@ func (c *Client) BaseURL() string { return c.baseURL }
 func newHTTPClient() *http.Client {
 	tr := http.DefaultTransport.(*http.Transport).Clone()
 	tr.Proxy = nil
-	// A shell that read agent.env holds SSL_CERT_FILE at the gateway's
-	// certificate alone. Add it to the system roots rather than replace them.
+	// A shell that read agent.env holds SSL_CERT_FILE at the CA bundle, and
+	// an older setup may point it at the gateway's certificate alone. Add
+	// what it holds to the system roots rather than replace them.
 	if f := os.Getenv("SSL_CERT_FILE"); f != "" {
 		if data, err := os.ReadFile(f); err == nil {
 			pool, perr := x509.SystemCertPool()
@@ -472,4 +474,23 @@ func (c *Client) AppOrigin(ctx context.Context) (string, error) {
 		return "", errors.New("the server did not name a plain dashboard address")
 	}
 	return origin, nil
+}
+
+// PlainHTTPWarning is a one-line warning when baseURL is plain http to a
+// host other than loopback, or "" when it is not. The gateway's
+// certificate is fetched from the API with no credential, so on such a
+// host anyone on the path can hand back a certificate of their own.
+func PlainHTTPWarning(baseURL string) string {
+	u, err := url.Parse(baseURL)
+	if err != nil || u.Scheme != "http" {
+		return ""
+	}
+	host := u.Hostname()
+	if host == "localhost" {
+		return ""
+	}
+	if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
+		return ""
+	}
+	return "onecli: warning: " + baseURL + " is plain http, so the gateway certificate fetched from it can be swapped on the way. Use https."
 }

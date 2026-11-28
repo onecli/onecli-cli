@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -1204,4 +1205,25 @@ func TestConnectCredentialInputs(t *testing.T) {
 		t.Setenv(agentenv.CredentialVar, testCred)
 		wantAgentErr(t, (&ConnectCmd{Token: testToken, FromEnv: true}).Run(out), exitcode.CodeValidation, exitcode.Error)
 	})
+}
+
+func TestFetchCAWarnsOnPlainHTTPOnly(t *testing.T) {
+	var warned []string
+	orig := warnLine
+	warnLine = func(msg string) { warned = append(warned, msg) }
+	t.Cleanup(func() { warnLine = orig })
+
+	f := newFakeAPI(t)
+	if _, err := fetchCA(context.Background(), agentapi.New(f.srv.URL)); err != nil {
+		t.Fatal(err)
+	}
+	if len(warned) != 0 {
+		t.Fatalf("loopback warned: %v", warned)
+	}
+	// A plain http host that is not loopback warns once, before any call.
+	// The fetch itself fails (the host does not exist); only the warning counts.
+	_, _ = fetchCA(context.Background(), agentapi.New("http://onecli.invalid"))
+	if len(warned) != 1 || !strings.Contains(warned[0], "plain http") {
+		t.Fatalf("warned = %v", warned)
+	}
 }
