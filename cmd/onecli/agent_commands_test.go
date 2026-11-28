@@ -163,7 +163,25 @@ func agentEnv(t *testing.T) (home, dir string) {
 	t.Setenv(agentenv.ProfileVar, filepath.Join(home, ".profile"))
 	t.Setenv(agentenv.CredentialVar, "")
 	t.Setenv("SSL_CERT_FILE", "")
+	fakeSystemRoots(t)
 	return home, dir
+}
+
+// testRootPEM stands in for the system's root certificates.
+const testRootPEM = "-----BEGIN CERTIFICATE-----\nUk9PVA==\n-----END CERTIFICATE-----\n"
+
+// fakeSystemRoots points the system root lookup at one temp file, so tests
+// never depend on the machine's roots.
+func fakeSystemRoots(t *testing.T) string {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), "roots.pem")
+	if err := os.WriteFile(p, []byte(testRootPEM), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	orig := agentenv.SystemCAPaths
+	agentenv.SystemCAPaths = []string{p}
+	t.Cleanup(func() { agentenv.SystemCAPaths = orig })
+	return p
 }
 
 func newOut() (*output.Writer, *bytes.Buffer, *bytes.Buffer) {
@@ -197,6 +215,7 @@ func writeEnvFile(t *testing.T, dir string) {
 	_, err := agentenv.Write(dir, agentenv.Settings{
 		AgentID: "agt_1", VaultID: "vlt_1", Credential: testCred,
 		Scheme: "http", Address: "gw.example.com:10255", CAFile: filepath.Join(dir, agentenv.CAFileName),
+		BundleFile: filepath.Join(dir, agentenv.CABundleFileName),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -1074,5 +1093,47 @@ func TestGatewayPEMIgnoresACertificateInASharedDir(t *testing.T) {
 	got, err = gatewayPEM(newAgentAPI(), dir)
 	if err != nil || string(got) != testPEM {
 		t.Fatalf("shared dir: got %q, %v; want the server's certificate", got, err)
+	}
+}
+
+// ---- the certificate bundle ----
+
+func TestConnectWritesTheBundleAndPointsAgentEnvAtIt(t *testing.T) {
+	_, dir := agentEnv(t)
+	newFakeAPI(t)
+	out, _, _ := newOut()
+	if err := (&ConnectCmd{Token: testToken, NoProfile: true}).Run(out); err != nil {
+		t.Fatal(err)
+	}
+	bundle := filepath.Join(dir, agentenv.CABundleFileName)
+	data, err := os.ReadFile(bundle)
+	if err != nil || string(data) != testRootPEM+testPEM {
+		t.Fatalf("bundle = %q, %v; want roots then the gateway certificate", data, err)
+	}
+	vals, _ := agentenv.Read(filepath.Join(dir, agentenv.FileName))
+	if vals["SSL_CERT_FILE"] != bundle || vals["REQUESTS_CA_BUNDLE"] != bundle || vals["GIT_SSL_CAINFO"] != bundle || vals["CURL_CA_BUNDLE"] != bundle {
+		t.Fatalf("agent.env does not point the replacing clients at the bundle: %v", vals)
+	}
+	if vals["NODE_EXTRA_CA_CERTS"] != filepath.Join(dir, agentenv.CAFileName) {
+		t.Fatalf("NODE_EXTRA_CA_CERTS = %q", vals["NODE_EXTRA_CA_CERTS"])
+	}
+}
+
+func TestConnectWithNoSystemRootsFailsBeforeTheTrade(t *testing.T) {
+	_, dir := agentEnv(t)
+	agentenv.SystemCAPaths = []string{"/no/such/file"}
+	f := newFakeAPI(t)
+	out, _, _ := newOut()
+	err := (&ConnectCmd{Token: testToken, NoProfile: true}).Run(out)
+	if !errors.Is(err, agentenv.ErrNoSystemRoots) {
+		t.Fatalf("err = %v, want ErrNoSystemRoots", err)
+	}
+	if n := len(f.callsTo("POST /v2/agents")); n != 0 {
+		t.Fatalf("the connect token was traded %d times", n)
+	}
+	for _, name := range []string{agentenv.FileName, agentenv.CABundleFileName} {
+		if _, err := os.Lstat(filepath.Join(dir, name)); !os.IsNotExist(err) {
+			t.Fatalf("%s was written", name)
+		}
 	}
 }

@@ -6,6 +6,8 @@ package agentenv
 
 import (
 	"bufio"
+	"bytes"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"os"
@@ -17,8 +19,14 @@ import (
 const (
 	// FileName is the name of the agent's settings file.
 	FileName = "agent.env"
-	// CAFileName is the gateway's certificate, next to agent.env.
+	// CAFileName is the gateway's certificate alone, next to agent.env.
+	// Only NODE_EXTRA_CA_CERTS points at it: Node adds it to its roots.
 	CAFileName = "gateway-ca.pem"
+	// CABundleFileName is the system roots plus the gateway's certificate,
+	// next to agent.env. SSL_CERT_FILE and the like replace a client's
+	// roots, and the client must still trust the proxy hop (a public
+	// certificate) and hosts past the proxy, so they point here.
+	CABundleFileName = "ca-bundle.pem"
 	// CredentialVar names the agent's credential in the environment.
 	CredentialVar = "ONECLI_AGENT_CREDENTIAL"
 	// HomeVar names the folder for agent.env.
@@ -85,6 +93,7 @@ type Settings struct {
 	Scheme     string
 	Address    string
 	CAFile     string
+	BundleFile string
 }
 
 // Check refuses any value that is not plainly safe inside single quotes.
@@ -103,6 +112,9 @@ func (s Settings) Check() error {
 	}
 	if s.CAFile == "" || !dirRE.MatchString(filepath.ToSlash(s.CAFile)) {
 		return errors.New("the certificate path is not safe to write")
+	}
+	if s.BundleFile == "" || !dirRE.MatchString(filepath.ToSlash(s.BundleFile)) {
+		return errors.New("the certificate bundle path is not safe to write")
 	}
 	return nil
 }
@@ -130,13 +142,89 @@ func (s Settings) Pairs() [][2]string {
 		[2]string{"no_proxy", "localhost,127.0.0.1"},
 		[2]string{"NODE_EXTRA_CA_CERTS", s.CAFile},
 		[2]string{"NODE_USE_ENV_PROXY", "1"},
-		[2]string{"SSL_CERT_FILE", s.CAFile},
-		[2]string{"CURL_CA_BUNDLE", s.CAFile},
-		[2]string{"REQUESTS_CA_BUNDLE", s.CAFile},
-		[2]string{"GIT_SSL_CAINFO", s.CAFile},
-		[2]string{"PGSSLROOTCERT", s.CAFile},
+		[2]string{"SSL_CERT_FILE", s.BundleFile},
+		[2]string{"CURL_CA_BUNDLE", s.BundleFile},
+		[2]string{"REQUESTS_CA_BUNDLE", s.BundleFile},
+		[2]string{"GIT_SSL_CAINFO", s.BundleFile},
+		[2]string{"PGSSLROOTCERT", s.BundleFile},
 	)
 	return out
+}
+
+// SystemCAPaths are where the system's root certificates are looked for,
+// in order. SSL_CERT_FILE is never read for this: in a shell that read
+// agent.env it names the bundle itself.
+var SystemCAPaths = []string{
+	"/etc/ssl/cert.pem",                                 // macOS, Alpine, OpenBSD
+	"/etc/ssl/certs/ca-certificates.crt",                // Debian, Ubuntu, Alpine, Arch
+	"/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem", // RHEL, Fedora, CentOS (current)
+	"/etc/pki/tls/certs/ca-bundle.crt",                  // RHEL, Fedora, CentOS (older)
+	"/etc/ssl/ca-bundle.pem",                            // openSUSE
+}
+
+// ErrNoSystemRoots means no system root certificates were found. A bundle
+// is never written without them: one with the gateway's certificate alone
+// would break every client that replaces its roots with it.
+var ErrNoSystemRoots = errors.New("no system root certificates found (looked in " +
+	"/etc/ssl/cert.pem, /etc/ssl/certs/ca-certificates.crt and the RHEL and SUSE paths): " +
+	"install the ca-certificates package")
+
+// ReadSystemCAs returns the first file of SystemCAPaths that holds at
+// least one certificate.
+func ReadSystemCAs() ([]byte, error) {
+	for _, p := range SystemCAPaths {
+		data, err := os.ReadFile(p)
+		if err == nil && HasCertificate(data) {
+			return data, nil
+		}
+	}
+	return nil, ErrNoSystemRoots
+}
+
+// WriteCABundle writes CABundleFileName in dir: the system roots, then
+// gatewayPEM. dir must be private (see EnsurePrivateDir). It fails, and
+// writes nothing, when no system roots are found or gatewayPEM holds no
+// certificate. The one writer of the bundle, for run and the agent paths.
+func WriteCABundle(dir, gatewayPEM string) (string, error) {
+	if !HasCertificate([]byte(gatewayPEM)) {
+		return "", errors.New("the gateway's certificate is not a PEM certificate")
+	}
+	roots, err := ReadSystemCAs()
+	if err != nil {
+		return "", err
+	}
+	if err := EnsurePrivateDir(dir); err != nil {
+		return "", err
+	}
+	var buf bytes.Buffer
+	buf.Write(roots)
+	if len(roots) > 0 && roots[len(roots)-1] != '\n' {
+		buf.WriteByte('\n')
+	}
+	buf.WriteString(gatewayPEM)
+	path := filepath.Join(dir, CABundleFileName)
+	if existing, err := os.ReadFile(path); err == nil && bytes.Equal(existing, buf.Bytes()) {
+		return path, nil
+	}
+	if err := WriteFileFresh(path, buf.Bytes(), 0o644); err != nil {
+		return "", err
+	}
+	return path, nil
+}
+
+// HasCertificate reports whether data holds at least one PEM CERTIFICATE
+// block.
+func HasCertificate(data []byte) bool {
+	for {
+		var b *pem.Block
+		b, data = pem.Decode(data)
+		if b == nil {
+			return false
+		}
+		if b.Type == "CERTIFICATE" {
+			return true
+		}
+	}
 }
 
 // Render returns the file's text. Check must pass first.

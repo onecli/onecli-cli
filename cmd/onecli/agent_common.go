@@ -117,10 +117,16 @@ func detectRuntime() string {
 }
 
 // writeCA writes the gateway's certificate next to agent.env, mode 0644,
-// in a dir only this user can write (the same rule agent.env follows):
-// commands run through the gateway trust this file.
+// and the bundle of system roots plus that certificate beside it, in a dir
+// only this user can write (the same rule agent.env follows): commands run
+// through the gateway trust these files. With no system roots found it
+// fails before anything is traded, rather than write a bundle that holds
+// the gateway's certificate alone.
 func writeCA(dir string, pem []byte) (string, error) {
 	if err := agentenv.EnsurePrivateDir(dir); err != nil {
+		return "", err
+	}
+	if _, err := agentenv.WriteCABundle(dir, string(pem)); err != nil {
 		return "", err
 	}
 	path := filepath.Join(dir, agentenv.CAFileName)
@@ -155,6 +161,7 @@ func saveAgent(dir, caPath string, a agentapi.Agent, noProfile bool) (connectedR
 		Scheme:     a.Gateway.Scheme,
 		Address:    a.Gateway.Address,
 		CAFile:     caPath,
+		BundleFile: filepath.Join(filepath.Dir(caPath), agentenv.CABundleFileName),
 	}
 	envPath, err := agentenv.Write(dir, s)
 	if err != nil {

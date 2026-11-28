@@ -44,7 +44,11 @@ func agentSettings(client *agentapi.Client) (agentenv.Settings, string, error) {
 	if err != nil {
 		return agentenv.Settings{}, "", err
 	}
-	s := agentenv.Settings{Credential: cred, CAFile: filepath.Join(dir, agentenv.CAFileName)}
+	s := agentenv.Settings{
+		Credential: cred,
+		CAFile:     filepath.Join(dir, agentenv.CAFileName),
+		BundleFile: filepath.Join(dir, agentenv.CABundleFileName),
+	}
 	vals, _ := agentenv.Read(filepath.Join(dir, agentenv.FileName))
 	if vals[agentenv.CredentialVar] == cred {
 		if u, perr := url.Parse(vals["HTTPS_PROXY"]); perr == nil && u.Host != "" {
@@ -265,9 +269,21 @@ func (c *AttachCmd) Run(out *output.Writer) error {
 		return err
 	}
 	client := newAgentAPI()
-	s, _, err := agentSettings(client)
+	s, dir, err := agentSettings(client)
 	if err != nil {
 		return err
+	}
+	if !c.DryRun {
+		// settings.json points SSL_CERT_FILE and the like at the bundle:
+		// make sure it is there (a credential from the environment may
+		// have no agent.env folder yet).
+		pem, err := gatewayPEM(client, dir)
+		if err != nil {
+			return fmt.Errorf("could not get the gateway's certificate: %w", err)
+		}
+		if _, err := writeCA(dir, pem); err != nil {
+			return err
+		}
 	}
 	page, err := client.Skill(newContext())
 	if err != nil {
