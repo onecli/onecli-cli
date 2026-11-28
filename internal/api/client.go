@@ -16,6 +16,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/onecli/onecli-cli/internal/clientid"
 )
 
 // Client is the HTTP client for the OneCLI API.
@@ -57,7 +59,8 @@ func newWithPrefix(baseURL, apiKey, prefix string) *Client {
 }
 
 func buildHTTPClient() *http.Client {
-	client := &http.Client{Timeout: 30 * time.Second}
+	// Every call names this client (OneCLI-Client), on whichever transport.
+	client := &http.Client{Timeout: 30 * time.Second, Transport: clientid.Wrap(nil)}
 	f := os.Getenv("SSL_CERT_FILE")
 	if f == "" {
 		return client
@@ -71,9 +74,9 @@ func buildHTTPClient() *http.Client {
 		pool = x509.NewCertPool()
 	}
 	pool.AppendCertsFromPEM(data)
-	client.Transport = &http.Transport{
+	client.Transport = clientid.Wrap(&http.Transport{
 		TLSClientConfig: &tls.Config{RootCAs: pool},
-	}
+	})
 	return client
 }
 

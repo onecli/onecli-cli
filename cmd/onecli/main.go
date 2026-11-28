@@ -10,6 +10,7 @@ import (
 	"github.com/alecthomas/kong"
 	"github.com/onecli/onecli-cli/internal/api"
 	"github.com/onecli/onecli-cli/internal/auth"
+	"github.com/onecli/onecli-cli/internal/clientid"
 	"github.com/onecli/onecli-cli/internal/config"
 	"github.com/onecli/onecli-cli/pkg/exitcode"
 	"github.com/onecli/onecli-cli/pkg/output"
@@ -52,6 +53,7 @@ type CLI struct {
 
 func main() {
 	out := output.New()
+	clientid.SetVersion(version)
 
 	// Hidden sidecar mode: the enforce-mode auth forwarder forked by
 	// `onecli run --enforce` re-invokes this binary. Handled before kong

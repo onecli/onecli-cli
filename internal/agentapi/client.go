@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/onecli/onecli-cli/internal/api"
+	"github.com/onecli/onecli-cli/internal/clientid"
 )
 
 // CredentialHeader carries the credential a place already holds.
@@ -57,7 +58,7 @@ func newHTTPClient() *http.Client {
 			tr.TLSClientConfig = &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}
 		}
 	}
-	return &http.Client{Timeout: 30 * time.Second, Transport: tr}
+	return &http.Client{Timeout: 30 * time.Second, Transport: clientid.Wrap(tr)}
 }
 
 // Error is a /v2 error answer: {"error":{"code","message","details"}}.
