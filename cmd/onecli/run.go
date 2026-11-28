@@ -52,6 +52,9 @@ type RunCmd struct {
 }
 
 func (c *RunCmd) Run(out *output.Writer) error {
+	if err := checkPlatform(); err != nil {
+		return err
+	}
 	if len(c.Args) == 0 {
 		return fmt.Errorf("no command specified: use 'onecli run -- <command> [args...]'")
 	}

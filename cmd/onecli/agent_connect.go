@@ -98,6 +98,9 @@ func (c *ConnectCmd) resolveCredential(out *output.Writer, tokenFromStdin bool) 
 }
 
 func (c *ConnectCmd) Run(out *output.Writer) error {
+	if err := checkPlatform(); err != nil {
+		return err
+	}
 	token := c.Token
 	if token == "-" {
 		var err error
@@ -245,6 +248,9 @@ type signupWaiting struct {
 }
 
 func (c *SignupCmd) Run(out *output.Writer) error {
+	if err := checkPlatform(); err != nil {
+		return err
+	}
 	if err := checkAgentName(c.Name); err != nil {
 		return err
 	}

@@ -12,6 +12,23 @@ onecli auth login --api-key oc_...
 onecli auth status
 ```
 
+### Connecting an agent (3.0 servers)
+
+On the agent's own machine, with no API key:
+
+```bash
+onecli connect oc_connect_...   # token from the vault's page; or `onecli signup` to ask your person
+onecli status                   # connected, and to which vault
+onecli items                    # what this agent can use (never a value)
+onecli check GET https://api.github.com/user   # what would happen to a call
+onecli exec -- curl https://api.github.com/user
+onecli request github           # ask your person for an item you lack
+onecli attach claude            # put the skill and proxy settings into the agent's config
+onecli disconnect
+```
+
+On Windows these stop with "Connecting an agent on Windows is not supported yet. Use WSL."
+
 ## Invariants
 
 1. **Always authenticate first** — run `onecli auth login` before any other command

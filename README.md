@@ -23,9 +23,47 @@ onecli secrets list
 onecli agents create --name "My Agent" --identifier my-agent
 ```
 
+## Agents (3.0)
+
+Against a OneCLI 3.0 server, an agent connects itself to a vault and runs
+as itself. These commands run on the agent's machine and need no API key.
+
+Connect an agent:
+
+```bash
+onecli connect oc_connect_...        # token from the vault's page, or: onecli signup
+onecli status                        # connected, and to which vault
+onecli items                         # what the agent can use
+onecli exec -- curl https://api.github.com/user
+onecli disconnect                    # when you are done
+```
+
+```
+onecli connect <connect-token>                         Connect this agent to a vault. Writes agent.env (mode 0600)
+onecli signup                                          Print a link and a code for your person, then wait for approval
+onecli attach [agent]                                  Put the OneCLI skill and proxy settings into an agent's own config
+onecli disconnect [--local-only]                       Remove this agent and delete agent.env
+onecli status                                          Whether this agent is connected, and to which vault
+onecli items                                           The vault's items this agent can use, never a value
+onecli check <method> <url>                            What would happen to one call, without sending it
+onecli request <service>                               Ask your person to add an item. Prints a link for them
+onecli exec -- <command> [args...]                     Run one command with the proxy and the OneCLI certificate
+```
+
+`onecli connect -` reads the token from standard input. `connect`, `signup`,
+`attach`, `disconnect` and `exec` take `--dry-run`.
+
+**Windows:** `connect`, `signup`, `exec` and `run` stop with "Connecting an
+agent on Windows is not supported yet. Use WSL." The CA bundle they write
+needs the system root certificates as a PEM file, and Windows keeps them in
+its own store. Run onecli inside WSL instead.
+
 ## Commands
 
-### Agents
+The sections below marked **2.x** describe the project, agent-token and grant
+model. They still work against 2.x servers.
+
+### Agents (2.x)
 
 ```
 onecli agents list [--with-grants]                     List all agents (optionally with grants)
@@ -40,7 +78,7 @@ onecli agents secrets --id X                           RETIRED — see 'agents g
 onecli agents set-secrets --id X --secret-ids a,b      RETIRED — see 'agents grants attach-secret'
 ```
 
-### Grants (the attach model)
+### Grants (2.x, the attach model)
 
 A grant attaches one credential to one agent — the only project-scope policy
 write. An agent starts with nothing and uses exactly what its grants attach.
@@ -70,7 +108,7 @@ onecli secrets update --id X --value Y                 Update a secret
 onecli secrets delete --id X                           Delete a secret
 ```
 
-### Rules (legacy model)
+### Rules (2.x, legacy model)
 
 Updated servers answer **410 Gone** for every `rules` subcommand. Project access
 is granted per agent (`agents grants`); org guardrails live under `org policy`.
@@ -98,7 +136,7 @@ onecli agents credentials --id X                            What one agent can u
 onecli apps connections agent-access --id X                 Who can reach a connection
 ```
 
-### Policy (project scope — RETIRED)
+### Policy (2.x, project scope, retired)
 
 Updated servers answer **410 Gone** for project-scope policy authoring: project
 rules are compiled from agent credential grants, never authored directly. Use
@@ -156,7 +194,7 @@ Against a OneCLI 3.0 server, two commands change:
 
 Against a server before 3.0, both commands behave as in 2.x.
 
-### Run
+### Run (2.x)
 
 ```
 onecli run -- <command> [args...]                      Run a command with gateway access
